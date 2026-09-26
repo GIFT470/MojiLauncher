@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('launcher', {
   modInstall: opts => ipcRenderer.invoke('mod-install', opts),
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   restartApp: () => ipcRenderer.invoke('restart-app'),
+  onUpdateDownloaded: cb => ipcRenderer.on('update-downloaded', (_e, info) => cb(info)),
   launch: opts => ipcRenderer.invoke('launch', opts),
   onProgress: cb => ipcRenderer.on('progress', (_e, p) => cb(p)),
   onGameLog: cb => ipcRenderer.on('game-log', (_e, line) => cb(line)),

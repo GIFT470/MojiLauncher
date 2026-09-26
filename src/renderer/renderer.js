@@ -516,6 +516,17 @@ $('check-updates').addEventListener('click', () => {
   checkForUpdates(false);
 });
 
+api.onUpdateDownloaded(info => {
+  log(`[launcher] Update ${info.version} ready — restart to install.`);
+  const status = $('update-status');
+  const btn = $('check-updates');
+  status.classList.remove('hidden');
+  status.textContent = `Version ${info.version} downloaded. Restart to install.`;
+  btn.textContent = 'Restart to update';
+  btn.disabled = false;
+  btn.dataset.restart = '1';
+});
+
 $('open-folder').addEventListener('click', openInstanceFolder);
 $('row-folder').addEventListener('click', openInstanceFolder);
 

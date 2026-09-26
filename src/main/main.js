@@ -226,7 +226,26 @@ ipcMain.handle('launch', async (_e, { versionId, versionUrl, username, loader, l
   }
 });
 
-// ---- App self-update from GitHub (git fast-forward pull) ----
+// ---- App self-update ----
+// Packaged app: electron-updater downloads new versions from GitHub Releases.
+// Dev/git checkout: fast-forward pull from the repo.
+const { autoUpdater } = require('electron-updater');
+let updateDownloaded = false;
+let lastUpdateCheck = 0;
+
+autoUpdater.autoDownload = true;
+autoUpdater.autoInstallOnAppQuit = true;
+autoUpdater.logger = null;
+
+autoUpdater.on('update-downloaded', info => {
+  updateDownloaded = true;
+  send('game-log', `[updater] Version ${info.version} downloaded — restart to install.\n`);
+  send('update-downloaded', { version: info.version });
+});
+autoUpdater.on('error', err => {
+  send('game-log', `[updater] ${err.message}\n`);
+});
+
 function runGit(args) {
   return new Promise(resolve => {
     execFile('git', args, { cwd: app.getAppPath(), windowsHide: true },
@@ -234,7 +253,7 @@ function runGit(args) {
   });
 }
 
-async function checkForUpdates() {
+async function checkForUpdatesGit() {
   if (!fs.existsSync(path.join(app.getAppPath(), '.git'))) {
     return { ok: false, state: 'no-repo', message: 'This install is not a git checkout, so it cannot auto-update.' };
   }
@@ -271,9 +290,40 @@ async function checkForUpdates() {
   };
 }
 
+async function checkForUpdates() {
+  if (updateDownloaded) {
+    return { ok: true, state: 'updated', message: 'Update downloaded. Restart to install.' };
+  }
+  if (app.isPackaged) {
+    if (Date.now() - lastUpdateCheck < 30000) {
+      return { ok: true, state: 'checking', message: 'Checking for updates...' };
+    }
+    lastUpdateCheck = Date.now();
+    try {
+      const res = await autoUpdater.checkForUpdates();
+      const latest = res?.updateInfo?.version;
+      if (!latest || latest === app.getVersion()) {
+        return { ok: true, state: 'up-to-date', message: 'You are on the latest version.' };
+      }
+      return {
+        ok: true,
+        state: 'downloading',
+        message: `Version ${latest} found — downloading in the background. You'll be prompted to restart.`,
+      };
+    } catch (err) {
+      return { ok: false, state: 'error', message: err.message || String(err) };
+    }
+  }
+  return checkForUpdatesGit();
+}
+
 ipcMain.handle('check-for-updates', () => checkForUpdates());
 
 ipcMain.handle('restart-app', () => {
+  if (updateDownloaded) {
+    autoUpdater.quitAndInstall();
+    return;
+  }
   app.relaunch();
   app.exit(0);
 });
