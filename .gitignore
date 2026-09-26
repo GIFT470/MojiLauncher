@@ -1,0 +1,9 @@
+node_modules/
+npm-debug.log*
+*.log
+.DS_Store
+Thumbs.db
+
+# Local test/scratch artifacts
+ui-*.png
+/tmp/

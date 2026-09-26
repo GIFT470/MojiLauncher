@@ -1,0 +1,13 @@
+{
+  "name": "moji-launcher",
+  "productName": "Moji Launcher",
+  "version": "1.0.0",
+  "description": "Offline-mode Minecraft launcher",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^33.0.0"
+  }
+}

@@ -1,0 +1,618 @@
+const $ = id => document.getElementById(id);
+const api = window.launcher;
+
+let allVersions = [];
+let loaderVersions = [];
+let selectedVersionId = '';
+let busy = false;
+let cfKey = '';
+let browseSource = 'modrinth';
+let browseType = 'mod';
+let browseQuery = '';
+let browseTimer = null;
+let lastSearchKey = '';
+
+const PHASE_LABEL = {
+  java: 'Preparing Java',
+  version: 'Loading version',
+  loader: 'Preparing mod loader',
+  libraries: 'Downloading files',
+  assets: 'Downloading assets',
+  natives: 'Extracting natives',
+  launch: 'Launching',
+};
+
+const LOADER_META = {
+  vanilla: { name: 'Vanilla', sub: 'No mod loader', color: 'gray' },
+  fabric: { name: 'Fabric', sub: 'Lightweight modding toolchain', color: 'yellow' },
+  quilt: { name: 'Quilt', sub: 'Community fork of Fabric', color: 'purple' },
+  forge: { name: 'Forge', sub: 'Classic modding framework', color: 'orange' },
+};
+
+function log(text) {
+  const el = $('log');
+  el.textContent += text.endsWith('\n') ? text : text + '\n';
+  const maxLines = 2000;
+  const lines = el.textContent.split('\n');
+  if (lines.length > maxLines) el.textContent = lines.slice(lines.length - maxLines).join('\n');
+  el.scrollTop = el.scrollHeight;
+  $('log-count').textContent = `${el.textContent ? el.textContent.split('\n').length : 0} lines`;
+}
+
+function setStatus(title, sub) {
+  $('status-title').textContent = title;
+  $('status-sub').textContent = sub;
+}
+
+function setStatusIdle() {
+  if (busy) return;
+  if (!selectedVersionId) {
+    setStatus('Loading versions...', 'Fetching manifest');
+    return;
+  }
+  setStatus('Ready to play', `${selectedVersionId} · ${LOADER_META[currentLoader()].name} · offline`);
+}
+
+function setBusy(isBusy) {
+  busy = isBusy;
+  $('play').disabled = isBusy;
+  updateLaunchLabel();
+  $('progress-wrap').classList.toggle('hidden', !isBusy);
+  $('status-pill').classList.toggle('busy', isBusy);
+}
+
+function updateLaunchLabel() {
+  $('play-label').textContent = busy ? 'Running...' : `Launch ${LOADER_META[currentLoader()].name}`;
+}
+
+function updateLoaderUI() {
+  const meta = LOADER_META[currentLoader()];
+  $('loader-name').textContent = meta.name;
+  $('loader-sub').textContent = `${meta.sub} — click to change`;
+  $('loader-hex').className = `hex hex-${meta.color}`;
+  updateLaunchLabel();
+}
+
+function updateAvatars() {
+  const initial = (($('username').value.trim())[0] || 'P').toUpperCase();
+  $('rail-avatar').textContent = initial;
+  $('chip-avatar').textContent = initial;
+}
+
+function currentLoader() {
+  return $('loader').value;
+}
+
+function currentLoaderVersion() {
+  return $('loader-version').value;
+}
+
+function filteredVersions(showSnapshots) {
+  const types = showSnapshots ? null : ['release'];
+  return allVersions.filter(v => !types || types.includes(v.type));
+}
+
+function renderPills(showSnapshots) {
+  const wrap = $('version-pills');
+  wrap.innerHTML = '';
+  for (const v of filteredVersions(showSnapshots)) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'pill';
+    b.dataset.id = v.id;
+    b.title = v.type;
+    b.textContent = v.id;
+    wrap.appendChild(b);
+  }
+}
+
+function markSel() {
+  const wrap = $('version-pills');
+  for (const el of wrap.children) el.classList.toggle('sel', el.dataset.id === selectedVersionId);
+  const sel = wrap.querySelector('.pill.sel');
+  if (sel) wrap.scrollTo({ left: sel.offsetLeft - wrap.clientWidth / 2 + sel.clientWidth / 2, behavior: 'smooth' });
+}
+
+function selectVersion(id, preferred) {
+  selectedVersionId = id;
+  markSel();
+  setStatusIdle();
+  populateLoaderVersions(preferred);
+}
+
+async function populateLoaderVersions(preferred) {
+  const loader = currentLoader();
+  const gameVersion = selectedVersionId;
+  const sel = $('loader-version');
+  const row = $('row-loader-version');
+  const note = $('loader-note');
+  const sub = $('loader-version-sub');
+
+  if (loader === 'vanilla' || !gameVersion) {
+    row.classList.add('off');
+    note.classList.add('hidden');
+    sub.textContent = loader === 'vanilla' ? 'Not used' : '—';
+    loaderVersions = [];
+    return;
+  }
+
+  note.classList.add('hidden');
+  sub.textContent = 'Loading...';
+
+  const res = await api.getLoaderVersions({ loader, gameVersion });
+  if (!res.ok || res.versions.length === 0) {
+    row.classList.add('off');
+    loaderVersions = [];
+    sub.textContent = 'Not available';
+    note.classList.remove('hidden');
+    note.textContent = res.ok
+      ? `No ${loader} versions exist for ${gameVersion}.`
+      : `Failed to load ${loader} versions: ${res.error}`;
+    return;
+  }
+
+  loaderVersions = res.versions;
+  sel.innerHTML = '';
+  for (const v of res.versions.slice(0, 200)) {
+    const opt = document.createElement('option');
+    opt.value = v.version;
+    opt.textContent = v.version + (v.recommended ? ' (recommended)' : '');
+    sel.appendChild(opt);
+  }
+
+  // For Forge prefer the recommended build; otherwise newest.
+  const recommended = res.versions.find(v => v.recommended);
+  const defaultV = preferred && res.versions.some(v => v.version === preferred)
+    ? preferred
+    : (loader === 'forge' && recommended ? recommended.version : res.versions[0].version);
+  sel.value = defaultV;
+
+  row.classList.remove('off');
+  sub.textContent = defaultV;
+}
+
+async function openInstanceFolder() {
+  const dir = await api.openInstanceDir({
+    versionId: selectedVersionId,
+    loader: currentLoader(),
+    loaderVersion: currentLoaderVersion(),
+  });
+  log(`[launcher] Instance folder: ${dir}`);
+}
+
+function switchTab(name) {
+  for (const t of ['play', 'browse', 'settings']) {
+    $('tab-' + t).classList.toggle('active', t === name);
+    $('page-' + t).classList.toggle('active', t === name);
+  }
+  if (name === 'browse') runSearch(false);
+}
+
+/* ---------- Mod browser (Modrinth / CurseForge) ---------- */
+function browseKey() {
+  return `${browseSource}|${browseType}|${browseQuery}|${selectedVersionId}|${currentLoader()}`;
+}
+
+function emptyMsg(text) {
+  const d = document.createElement('div');
+  d.className = 'browse-empty';
+  d.textContent = text;
+  return d;
+}
+
+function iconPlaceholder(hit) {
+  const ph = document.createElement('span');
+  ph.className = 'mod-icon ph';
+  ph.textContent = (hit.title || '?')[0].toUpperCase();
+  return ph;
+}
+
+async function installMod(hit, btn) {
+  btn.disabled = true;
+  btn.textContent = '...';
+  const filesRes = await api.modFiles({ source: hit.source, projectId: hit.id, gameVersion: selectedVersionId, loader: currentLoader(), type: 'mod' });
+  if (!filesRes.ok || !filesRes.files.length) {
+    btn.textContent = 'No file';
+    btn.title = `No ${currentLoader()} file for ${selectedVersionId}.`;
+    return;
+  }
+  const f = filesRes.files[0];
+  const res = await api.modInstall({
+    fileUrl: f.fileUrl,
+    filename: f.filename,
+    versionId: selectedVersionId,
+    loader: currentLoader(),
+    loaderVersion: currentLoaderVersion(),
+  });
+  if (!res.ok) {
+    btn.disabled = false;
+    btn.textContent = 'Retry';
+    log(`[launcher] Mod install failed: ${res.error}`);
+    return;
+  }
+  btn.classList.add('done');
+  btn.textContent = res.existing ? 'Already in' : 'Added';
+  log(`[launcher] ${hit.title} → ${res.dest}`);
+}
+
+function modCard(hit) {
+  const card = document.createElement('div');
+  card.className = 'mod-card';
+
+  const head = document.createElement('div');
+  head.className = 'mod-head';
+  if (hit.iconUrl) {
+    const img = document.createElement('img');
+    img.className = 'mod-icon';
+    img.src = hit.iconUrl;
+    img.alt = '';
+    img.onerror = () => img.replaceWith(iconPlaceholder(hit));
+    head.appendChild(img);
+  } else {
+    head.appendChild(iconPlaceholder(hit));
+  }
+  const titles = document.createElement('div');
+  titles.className = 'mod-titles';
+  const t = document.createElement('div');
+  t.className = 'mod-title';
+  t.textContent = hit.title;
+  t.title = hit.title;
+  const a = document.createElement('div');
+  a.className = 'mod-author';
+  a.textContent = `by ${hit.author || 'unknown'}`;
+  titles.append(t, a);
+  head.appendChild(titles);
+  card.appendChild(head);
+
+  const desc = document.createElement('div');
+  desc.className = 'mod-desc';
+  desc.textContent = hit.description || '';
+  card.appendChild(desc);
+
+  const foot = document.createElement('div');
+  foot.className = 'mod-foot';
+  const dl = document.createElement('span');
+  dl.className = 'mod-dl';
+  dl.textContent = `${hit.downloadsLabel} downloads`;
+  foot.appendChild(dl);
+  const btn = document.createElement('button');
+  btn.className = 'red-btn tiny';
+  if (hit.type === 'modpack') {
+    btn.textContent = 'Browse only';
+    btn.disabled = true;
+    btn.title = 'Modpack browsing is supported; one-click modpack installs are not in yet.';
+  } else {
+    btn.textContent = 'Add';
+    btn.title = `Install into this instance's mods folder (${selectedVersionId} + ${currentLoader()})`;
+    btn.addEventListener('click', () => installMod(hit, btn));
+  }
+  foot.appendChild(btn);
+  card.appendChild(foot);
+  return card;
+}
+
+async function runSearch(force) {
+  const key = browseKey();
+  const grid = $('mod-grid');
+  if (!force && key === lastSearchKey && grid.children.length) return;
+  lastSearchKey = key;
+  $('browse-note').textContent = '';
+
+  if (browseSource === 'curseforge' && !cfKey) {
+    grid.innerHTML = '';
+    grid.appendChild(emptyMsg('CurseForge browsing needs a free API key. Add it in Settings → CurseForge API key, then come back.'));
+    $('browse-count').textContent = '';
+    return;
+  }
+
+  $('browse-count').textContent = 'Searching...';
+  grid.innerHTML = '';
+  const res = await api.modSearch({
+    source: browseSource,
+    query: browseQuery,
+    type: browseType,
+    gameVersion: selectedVersionId,
+    loader: currentLoader(),
+  });
+  if (!res.ok) {
+    $('browse-count').textContent = '';
+    grid.innerHTML = '';
+    grid.appendChild(emptyMsg(res.error === 'no-key'
+      ? 'CurseForge API key missing — set it in Settings.'
+      : `Search failed: ${res.error}`));
+    return;
+  }
+  const loaderLabel = currentLoader() === 'vanilla' ? '' : ` + ${currentLoader()}`;
+  $('browse-count').textContent = `${res.total.toLocaleString()} results · ${selectedVersionId}${loaderLabel}`;
+  grid.innerHTML = '';
+  if (!res.hits.length) {
+    grid.appendChild(emptyMsg('Nothing found. Try another search, version or loader.'));
+    return;
+  }
+  for (const hit of res.hits) grid.appendChild(modCard(hit));
+}
+
+async function init() {
+  const s = await api.getSettings();
+  $('username').value = s.username || '';
+  $('ram').value = s.ramMb;
+  $('ram-label').textContent = (s.ramMb / 1024).toFixed(s.ramMb % 1024 ? 1 : 0) + ' GB';
+  $('snapshots').checked = s.showSnapshots;
+  $('snap-pill').classList.toggle('on', !!s.showSnapshots);
+  $('gamedir').value = s.gameDir;
+  $('javapath').value = s.javaPath || '';
+  $('width').value = s.width || '';
+  $('height').value = s.height || '';
+  cfKey = s.curseforgeKey || '';
+  $('curseforge-key').value = cfKey;
+  if (s.loader) $('loader').value = s.loader;
+  updateAvatars();
+  updateLoaderUI();
+
+  try {
+    const data = await api.getVersions();
+    allVersions = data.versions;
+    renderPills(s.showSnapshots);
+    const list = filteredVersions(s.showSnapshots);
+    selectedVersionId = data.latest?.release && list.some(v => v.id === data.latest.release)
+      ? data.latest.release
+      : list[0]?.id || '';
+    markSel();
+    await populateLoaderVersions(s.loaderVersion);
+  } catch (err) {
+    log(`[launcher] Failed to load version list: ${err.message}`);
+  }
+  setStatusIdle();
+
+  try {
+    const javas = await api.getJavas();
+    $('java-list').textContent = javas.length
+      ? 'Detected: ' + javas.map(j => `Java ${j.major} (${j.path})`).join(', ')
+      : 'No Java detected — the launcher will download one automatically.';
+  } catch {}
+}
+
+$('tab-play').addEventListener('click', () => switchTab('play'));
+$('tab-browse').addEventListener('click', () => switchTab('browse'));
+$('tab-settings').addEventListener('click', () => switchTab('settings'));
+$('goto-settings').addEventListener('click', () => switchTab('settings'));
+
+for (const btn of document.querySelectorAll('#seg-source .seg-btn')) {
+  btn.addEventListener('click', () => {
+    if (browseSource === btn.dataset.source) return;
+    browseSource = btn.dataset.source;
+    for (const b of document.querySelectorAll('#seg-source .seg-btn')) b.classList.toggle('sel', b === btn);
+    runSearch(true);
+  });
+}
+for (const btn of document.querySelectorAll('#seg-type .seg-btn')) {
+  btn.addEventListener('click', () => {
+    if (browseType === btn.dataset.type) return;
+    browseType = btn.dataset.type;
+    for (const b of document.querySelectorAll('#seg-type .seg-btn')) b.classList.toggle('sel', b === btn);
+    runSearch(true);
+  });
+}
+$('mod-query').addEventListener('input', () => {
+  clearTimeout(browseTimer);
+  browseTimer = setTimeout(() => {
+    browseQuery = $('mod-query').value.trim();
+    runSearch(true);
+  }, 350);
+});
+$('mod-query').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  clearTimeout(browseTimer);
+  browseQuery = $('mod-query').value.trim();
+  runSearch(true);
+});
+
+$('curseforge-key').addEventListener('change', async () => {
+  cfKey = $('curseforge-key').value.trim();
+  await api.saveSettings({ curseforgeKey: cfKey });
+  if (browseSource === 'curseforge') runSearch(true);
+});
+
+$('version-pills').addEventListener('click', e => {
+  const btn = e.target.closest('.pill');
+  if (btn && btn.dataset.id && btn.dataset.id !== selectedVersionId) selectVersion(btn.dataset.id);
+});
+
+$('snapshots').addEventListener('change', () => {
+  const on = $('snapshots').checked;
+  $('snap-pill').classList.toggle('on', on);
+  renderPills(on);
+  if (!$('version-pills').querySelector('.pill.sel')) {
+    selectedVersionId = filteredVersions(on)[0]?.id || '';
+  }
+  markSel();
+  setStatusIdle();
+  populateLoaderVersions();
+  api.saveSettings({ showSnapshots: on });
+});
+
+$('loader').addEventListener('change', () => {
+  updateLoaderUI();
+  api.saveSettings({ loader: currentLoader(), loaderVersion: '' });
+  populateLoaderVersions();
+  setStatusIdle();
+});
+
+$('loader-version').addEventListener('change', () => {
+  $('loader-version-sub').textContent = currentLoaderVersion();
+  api.saveSettings({ loaderVersion: currentLoaderVersion() });
+});
+
+$('ram').addEventListener('input', () => {
+  const mb = Number($('ram').value);
+  $('ram-label').textContent = (mb / 1024).toFixed(mb % 1024 ? 1 : 0) + ' GB';
+});
+
+$('username').addEventListener('input', updateAvatars);
+$('username').addEventListener('change', () => {
+  updateAvatars();
+  api.saveSettings({ username: $('username').value.trim() });
+});
+
+$('browse').addEventListener('click', async () => {
+  const dir = await api.pickDirectory();
+  if (dir) $('gamedir').value = dir;
+});
+
+$('save-settings').addEventListener('click', async () => {
+  await api.saveSettings({
+    gameDir: $('gamedir').value.trim(),
+    javaPath: $('javapath').value.trim(),
+    ramMb: Number($('ram').value),
+    username: $('username').value.trim(),
+    width: Number($('width').value) || 0,
+    height: Number($('height').value) || 0,
+    curseforgeKey: $('curseforge-key').value.trim(),
+  });
+  cfKey = $('curseforge-key').value.trim();
+  $('save-status').classList.remove('hidden');
+  setTimeout(() => $('save-status').classList.add('hidden'), 2000);
+});
+
+async function checkForUpdates(silent) {
+  const status = $('update-status');
+  const btn = $('check-updates');
+  if (!silent) {
+    btn.disabled = true;
+    status.classList.remove('hidden');
+    status.textContent = 'Checking for updates...';
+  }
+  try {
+    const res = await api.checkForUpdates();
+    const msg = res.message || (res.ok ? 'Up to date.' : 'Update check failed.');
+    if (!silent) {
+      status.textContent = msg;
+      if (res.state === 'updated') {
+        btn.textContent = 'Restart to update';
+        btn.disabled = false;
+        btn.dataset.restart = '1';
+        return;
+      }
+      setTimeout(() => status.classList.add('hidden'), 4000);
+    } else if (res.state === 'updated') {
+      log(`[launcher] ${msg}`);
+      status.classList.remove('hidden');
+      status.textContent = msg;
+      btn.textContent = 'Restart to update';
+      btn.dataset.restart = '1';
+    }
+  } catch (err) {
+    if (!silent) {
+      status.textContent = 'Update check failed: ' + err.message;
+      setTimeout(() => status.classList.add('hidden'), 4000);
+    }
+  } finally {
+    if (!silent && btn.dataset.restart !== '1') btn.disabled = false;
+  }
+}
+
+$('check-updates').addEventListener('click', () => {
+  if ($('check-updates').dataset.restart === '1') { api.restartApp(); return; }
+  checkForUpdates(false);
+});
+
+$('open-folder').addEventListener('click', openInstanceFolder);
+$('row-folder').addEventListener('click', openInstanceFolder);
+
+$('clear-log').addEventListener('click', () => {
+  $('log').textContent = '';
+  $('log-count').textContent = '0 lines';
+});
+
+async function refreshVersions(silent) {
+  if (busy) return;
+  if (!silent) log('[launcher] Refreshing version list...');
+  try {
+    const data = await api.getVersions();
+    allVersions = data.versions;
+    renderPills($('snapshots').checked);
+    if (!allVersions.some(v => v.id === selectedVersionId)) {
+      const list = filteredVersions($('snapshots').checked);
+      selectedVersionId = data.latest?.release && list.some(v => v.id === data.latest.release)
+        ? data.latest.release
+        : list[0]?.id || '';
+      populateLoaderVersions();
+    }
+    markSel();
+    setStatusIdle();
+    if (!silent) log('[launcher] Version list refreshed.');
+  } catch (err) {
+    if (!silent) log(`[launcher] Refresh failed: ${err.message}`);
+  }
+}
+
+$('refresh-versions').addEventListener('click', () => refreshVersions(false));
+
+// Keep the version list current: refresh every 15 minutes and whenever the
+// window regains focus, so newly released Minecraft versions appear automatically.
+setInterval(() => refreshVersions(true), 15 * 60 * 1000);
+window.addEventListener('focus', () => refreshVersions(true));
+
+$('play').addEventListener('click', async () => {
+  if (busy) return;
+  const username = $('username').value.trim() || 'Player';
+  const versionId = selectedVersionId;
+  const version = allVersions.find(v => v.id === versionId);
+  if (!version) { log('[launcher] No version selected.'); return; }
+
+  const loader = currentLoader();
+  const loaderVersion = currentLoaderVersion();
+  if (loader !== 'vanilla' && !loaderVersion) {
+    log(`[launcher] No ${loader} version available for ${versionId}.`);
+    return;
+  }
+
+  await api.saveSettings({
+    ramMb: Number($('ram').value),
+    username,
+    loader,
+    loaderVersion,
+  });
+
+  setBusy(true);
+  $('progress-fill').style.width = '0%';
+  $('progress-text').textContent = 'Starting...';
+  setStatus('Launching', `${versionId} as ${username}`);
+  log(`[launcher] Launching ${versionId}${loader === 'vanilla' ? '' : ' + ' + loader + ' ' + loaderVersion} as ${username}...`);
+
+  const res = await api.launch({ versionId, versionUrl: version.url, username, loader, loaderVersion });
+  if (!res.ok) {
+    setBusy(false);
+    log(`[launcher] Launch failed: ${res.error}`);
+    $('progress-text').textContent = 'Failed: ' + res.error;
+    setStatus('Launch failed', res.error);
+  }
+});
+
+api.onProgress(p => {
+  if (!busy) return;
+  const pct = p.total ? Math.round((p.current / p.total) * 100) : 0;
+  $('progress-fill').style.width = pct + '%';
+  const label = PHASE_LABEL[p.phase] || p.phase;
+  const detail = p.file ? ` — ${p.file}` : '';
+  $('progress-text').textContent = `${label}: ${p.current}/${p.total} (${pct}%)${detail}`;
+  setStatus(label, `${p.current}/${p.total}${p.file ? ' · ' + p.file : ''}`);
+  if (p.phase === 'java') log(`[launcher] ${p.file}`);
+});
+
+api.onGameLog(line => log(line.replace(/\n$/, '')));
+
+api.onGameExit(info => {
+  setBusy(false);
+  $('progress-fill').style.width = '100%';
+  if (info.error) log(`[launcher] Game process error: ${info.error}`);
+  else log(`[launcher] Game exited (code ${info.code}${info.signal ? ', ' + info.signal : ''}).`);
+  $('progress-text').textContent = info.code === 0 ? 'Game closed.' : `Game exited with code ${info.code}.`;
+  setStatus('Game closed', info.code === 0 ? 'See you next time' : `exit code ${info.code}`);
+});
+
+init();
+
+// Silently check GitHub for launcher updates shortly after startup, then hourly.
+setTimeout(() => checkForUpdates(true), 4000);
+setInterval(() => checkForUpdates(true), 60 * 60 * 1000);
