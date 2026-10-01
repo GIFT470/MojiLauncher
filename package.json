@@ -35,7 +35,8 @@
       {
         "provider": "github",
         "owner": "GIFT470",
-        "repo": "MojiLauncher"
+        "repo": "MojiLauncher",
+        "releaseType": "release"
       }
     ]
   },
