@@ -1,7 +1,7 @@
 {
   "name": "moji-launcher",
   "productName": "Moji Launcher",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Offline-mode Minecraft launcher",
   "author": "GIFT470",
   "main": "src/main/main.js",

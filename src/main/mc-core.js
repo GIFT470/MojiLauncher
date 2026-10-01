@@ -231,7 +231,7 @@ function collectDownloads(gameDir, vj) {
   if (vj.assetIndex) {
     files.push({
       url: vj.assetIndex.url,
-      dest: path.join(gameDir, 'assets', 'indexes', vj.assetIndex.id),
+      dest: path.join(gameDir, 'assets', 'indexes', vj.assetIndex.id + '.json'),
       size: vj.assetIndex.size,
       sha1: vj.assetIndex.sha1,
     });
@@ -276,7 +276,7 @@ async function installVersion(gameDir, vj, onProgress) {
   // Asset objects (bulk of the work) are discovered from the asset index.
   let assetTasks = [];
   if (vj.assetIndex) {
-    const indexFile = path.join(gameDir, 'assets', 'indexes', vj.assetIndex.id);
+    const indexFile = path.join(gameDir, 'assets', 'indexes', vj.assetIndex.id + '.json');
     if (await existsFull(indexFile)) {
       const index = JSON.parse(await fsp.readFile(indexFile, 'utf8'));
       for (const obj of Object.values(index.objects || {})) {
@@ -297,7 +297,7 @@ async function installVersion(gameDir, vj, onProgress) {
 
   // Re-check asset index now that it may have just been downloaded.
   if (vj.assetIndex && assetTasks.length === 0) {
-    const indexFile = path.join(gameDir, 'assets', 'indexes', vj.assetIndex.id);
+    const indexFile = path.join(gameDir, 'assets', 'indexes', vj.assetIndex.id + '.json');
     if (await existsFull(indexFile)) {
       const index = JSON.parse(await fsp.readFile(indexFile, 'utf8'));
       for (const obj of Object.values(index.objects || {})) {
