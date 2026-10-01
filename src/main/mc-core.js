@@ -161,16 +161,16 @@ async function getVersionJson(gameDir, versionId, url) {
 // libraries and argument lists are appended to the parent's.
 function mergeVersionJsons(parent, child) {
   const merged = { ...parent, ...child };
-  // Child libraries override parent ones with the same group:artifact (e.g. Forge's newer log4j).
-  const key = l => l.name.split(':').slice(0, 2).join(':');
-  const byKey = new Map();
-  const order = [];
-  for (const lib of [...(parent.libraries || []), ...(child.libraries || [])]) {
-    const k = key(lib);
-    if (!byKey.has(k)) order.push(k);
-    byKey.set(k, lib);
-  }
-  merged.libraries = order.map(k => byKey.get(k));
+  // A child library replaces parent libraries with the same group:artifact
+  // (e.g. Forge's newer log4j). Entries within one list must NOT be collapsed:
+  // modern Mojang jsons list the same group:artifact several times (main jar +
+  // per-OS natives entries like org.lwjgl:lwjgl-glfw:3.3.3:natives-windows).
+  const ga = l => l.name.split(':').slice(0, 2).join(':');
+  const childKeys = new Set((child.libraries || []).map(ga));
+  merged.libraries = [
+    ...(parent.libraries || []).filter(l => !childKeys.has(ga(l))),
+    ...(child.libraries || []),
+  ];
   merged.downloads = { ...(parent.downloads || {}), ...(child.downloads || {}) };
   if (parent.arguments || child.arguments) {
     merged.arguments = {

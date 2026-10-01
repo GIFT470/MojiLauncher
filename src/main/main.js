@@ -192,8 +192,12 @@ ipcMain.handle('launch', async (_e, { versionId, versionUrl, username, loader, l
     const instanceDir = await instanceDirFor(gameDir, launchId);
     send('game-log', `[launcher] Instance folder: ${instanceDir}\n`);
 
+    // Modern version jsons put natives jars directly on the classpath and point
+    // -Djava.library.path/-Djna.tmpdir/lwjgl SharedLibraryExtractPath at this
+    // dir, so it must exist even when nothing is extracted into it.
     const nativesPath = path.join(gameDir, 'versions', vj.id, `${vj.id}-natives`);
-    const nativesDir = fs.existsSync(nativesPath) ? nativesPath : '';
+    await fsp.mkdir(nativesPath, { recursive: true });
+    const nativesDir = nativesPath;
 
     const args = mc.buildLaunchArgs(gameDir, vj, {
       username,
