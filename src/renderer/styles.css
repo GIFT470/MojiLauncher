@@ -48,13 +48,7 @@ body::before {
     radial-gradient(800px 560px at 88% 10%, rgba(72, 72, 148, 0.13), transparent 60%),
     radial-gradient(1100px 760px at 72% 92%, rgba(140, 44, 96, 0.10), transparent 65%),
     radial-gradient(1400px 900px at 50% 50%, rgba(20, 16, 22, 0.6), transparent 100%);
-  animation: drift 26s ease-in-out infinite alternate;
   pointer-events: none;
-}
-
-@keyframes drift {
-  from { transform: translate3d(-2.5%, -1.5%, 0) rotate(-0.6deg); }
-  to { transform: translate3d(2.5%, 1.5%, 0) rotate(0.6deg); }
 }
 
 #app { display: flex; height: 100vh; }
@@ -138,6 +132,7 @@ header h1 {
 }
 .status-icon {
   width: 26px; height: 26px; border-radius: 8px; flex: none;
+  position: relative;
   display: grid; place-items: center;
   background: rgba(224, 52, 63, 0.16); color: var(--accent-bright);
   transition: background 0.3s var(--ease), color 0.3s var(--ease), box-shadow 0.3s var(--ease);
@@ -145,11 +140,16 @@ header h1 {
 .status-pill.busy .status-icon {
   background: linear-gradient(160deg, var(--accent-bright), var(--accent-dark));
   color: #fff;
-  animation: glowPulse 1.3s ease-in-out infinite;
 }
-@keyframes glowPulse {
-  0%, 100% { box-shadow: 0 0 6px rgba(224, 52, 63, 0.45); }
-  50% { box-shadow: 0 0 18px rgba(224, 52, 63, 0.9); }
+.status-pill.busy .status-icon::after {
+  content: ''; position: absolute; inset: 0; border-radius: inherit;
+  box-shadow: 0 0 16px rgba(224, 52, 63, 0.9);
+  opacity: 0; pointer-events: none;
+  animation: ringPulse 1.3s ease-in-out infinite;
+}
+@keyframes ringPulse {
+  0%, 100% { opacity: 0.25; transform: scale(0.92); }
+  50% { opacity: 0.9; transform: scale(1.05); }
 }
 .status-text { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
 .status-text strong {
@@ -247,6 +247,11 @@ main.page.active { display: flex; gap: 14px; padding: 14px 16px 16px; animation:
 .pill.sel {
   background: #f4f4f6; border-color: #fff; color: #141419;
   box-shadow: 0 2px 12px rgba(255, 255, 255, 0.22);
+  animation: pillPop 0.3s var(--ease-spring);
+}
+@keyframes pillPop {
+  from { transform: scale(0.86); }
+  to { transform: scale(1); }
 }
 
 .snap-pill {
@@ -278,17 +283,31 @@ main.page.active { display: flex; gap: 14px; padding: 14px 16px 16px; animation:
   box-shadow: 0 6px 24px rgba(224, 52, 63, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.26);
   transition: transform 0.18s var(--ease-spring), filter 0.25s var(--ease), box-shadow 0.25s var(--ease);
 }
-.launch-btn:not(:disabled) { animation: breathe 3.2s ease-in-out infinite; }
-@keyframes breathe {
-  0%, 100% { box-shadow: 0 6px 24px rgba(224, 52, 63, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.26); }
-  50% { box-shadow: 0 8px 34px rgba(224, 52, 63, 0.58), inset 0 1px 0 rgba(255, 255, 255, 0.26); }
+.launch-btn::before {
+  content: ''; position: absolute; inset: 0; border-radius: inherit;
+  box-shadow: inset 0 0 26px rgba(255, 122, 132, 0.6);
+  opacity: 0.2; pointer-events: none;
+}
+.launch-btn:not(:disabled)::before { animation: innerPulse 3.2s ease-in-out infinite; }
+@keyframes innerPulse {
+  0%, 100% { opacity: 0.16; }
+  50% { opacity: 0.5; }
+}
+.launch-btn::after {
+  content: ''; position: absolute; inset: 0; border-radius: inherit;
+  background: linear-gradient(115deg, transparent 34%, rgba(255, 255, 255, 0.32) 50%, transparent 66%);
+  transform: translateX(-130%);
+  transition: transform 0.6s var(--ease);
+  pointer-events: none;
 }
 .launch-btn:hover:not(:disabled) { transform: translateY(-2px); filter: brightness(1.06); }
+.launch-btn:hover:not(:disabled)::after { transform: translateX(130%); }
 .launch-btn:active:not(:disabled) { transform: translateY(0) scale(0.985); }
 .launch-btn:disabled {
   background: #2a2a31; color: #6d6d78; cursor: not-allowed;
-  box-shadow: none; animation: none;
+  box-shadow: none;
 }
+.launch-btn:disabled::before, .launch-btn:disabled::after { opacity: 0; animation: none; }
 .launch-btn:disabled .launch-ico { background: #3a3a42; }
 .launch-btn:disabled .launch-ico svg { fill: #6d6d78; }
 
@@ -483,6 +502,7 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.05); }
   border: 1px solid var(--border);
   border-radius: 10px;
   overflow-y: auto;
+  contain: layout paint;
   font-family: Consolas, monospace; font-size: 11px; line-height: 1.5;
   color: #c9c9d2;
   white-space: pre-wrap; word-break: break-all;
@@ -633,7 +653,12 @@ input[type="text"]:focus, input[type="number"]:focus {
   border: 1px solid var(--border);
   border-radius: 12px; padding: 12px;
   backdrop-filter: blur(10px);
+  animation: cardFade 0.3s var(--ease);
   transition: transform 0.2s var(--ease), border-color 0.2s var(--ease), box-shadow 0.2s var(--ease);
+}
+@keyframes cardFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 .mod-card:hover {
   transform: translateY(-2px);
@@ -680,6 +705,28 @@ input[type="text"]:focus, input[type="number"]:focus {
   grid-column: 1 / -1;
   text-align: center; color: var(--muted);
   padding: 46px 0; font-size: 13px; line-height: 1.6;
+}
+
+/* ---------- Ripple + press feedback (composited: transform/opacity only) ---------- */
+.launch-btn, .red-btn, .pill, .rail-btn, .circle-btn, .mini-btn, .seg-btn, .snap-pill {
+  position: relative;
+  overflow: hidden;
+}
+.ripple-ink {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0.18) 58%, transparent 70%);
+  transform: scale(0);
+  opacity: 0.5;
+  pointer-events: none;
+  will-change: transform, opacity;
+  animation: rippleInk 0.55s var(--ease) forwards;
+}
+.pill.sel .ripple-ink {
+  background: radial-gradient(circle, rgba(18, 18, 22, 0.42) 0%, rgba(18, 18, 22, 0.14) 58%, transparent 70%);
+}
+@keyframes rippleInk {
+  to { transform: scale(2.6); opacity: 0; }
 }
 
 /* ---------- Scrollbars / selection ---------- */

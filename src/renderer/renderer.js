@@ -29,14 +29,67 @@ const LOADER_META = {
   forge: { name: 'Forge', sub: 'Classic modding framework', color: 'orange' },
 };
 
+// Console rendering is batched: game/launch output can arrive hundreds of lines
+// per second, and touching the DOM per line (textContent +=, split, scrollHeight)
+// caused visible lag spikes. We buffer text, flush once per animation frame, append
+// a single text node, and trim whole nodes instead of re-splitting the buffer.
+const logEl = $('log');
+const logCountEl = $('log-count');
+const LOG_MAX_LINES = 2000;
+let logNodes = [];      // { node, lines } oldest first
+let logLineCount = 0;
+let logPending = '';
+let logRaf = 0;
+let logAtBottom = true;
+
+logEl.addEventListener('scroll', () => {
+  logAtBottom = logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 48;
+}, { passive: true });
+
+function countNewlines(s) {
+  let n = 0;
+  for (let i = 0; i < s.length; i++) if (s.charCodeAt(i) === 10) n++;
+  return n;
+}
+
+function flushLog() {
+  logRaf = 0;
+  if (!logPending) return;
+  let chunk = logPending;
+  logPending = '';
+  let added = countNewlines(chunk);
+  // Bound a single flush: if the window was hidden, lines can pile up between
+  // frames. Never append more than the cap at once, or one frame hitch-spikes.
+  if (added > LOG_MAX_LINES) {
+    const lines = chunk.split('\n');
+    chunk = lines.slice(lines.length - LOG_MAX_LINES).join('\n');
+    added = countNewlines(chunk);
+  }
+  const node = document.createTextNode(chunk);
+  logEl.appendChild(node);
+  logNodes.push({ node, lines: added });
+  logLineCount += added;
+  while (logLineCount > LOG_MAX_LINES && logNodes.length > 1) {
+    const old = logNodes.shift();
+    old.node.remove();
+    logLineCount -= old.lines;
+  }
+  logCountEl.textContent = `${logLineCount} lines`;
+  if (logAtBottom) logEl.scrollTop = logEl.scrollHeight;
+}
+
 function log(text) {
-  const el = $('log');
-  el.textContent += text.endsWith('\n') ? text : text + '\n';
-  const maxLines = 2000;
-  const lines = el.textContent.split('\n');
-  if (lines.length > maxLines) el.textContent = lines.slice(lines.length - maxLines).join('\n');
-  el.scrollTop = el.scrollHeight;
-  $('log-count').textContent = `${el.textContent ? el.textContent.split('\n').length : 0} lines`;
+  logPending += text.endsWith('\n') ? text : text + '\n';
+  if (!logRaf) logRaf = requestAnimationFrame(flushLog);
+}
+
+function clearLog() {
+  if (logRaf) { cancelAnimationFrame(logRaf); logRaf = 0; }
+  logPending = '';
+  logNodes = [];
+  logLineCount = 0;
+  logEl.textContent = '';
+  logCountEl.textContent = '0 lines';
 }
 
 function setStatus(title, sub) {
@@ -94,7 +147,7 @@ function filteredVersions(showSnapshots) {
 
 function renderPills(showSnapshots) {
   const wrap = $('version-pills');
-  wrap.innerHTML = '';
+  const frag = document.createDocumentFragment();
   for (const v of filteredVersions(showSnapshots)) {
     const b = document.createElement('button');
     b.type = 'button';
@@ -102,8 +155,9 @@ function renderPills(showSnapshots) {
     b.dataset.id = v.id;
     b.title = v.type;
     b.textContent = v.id;
-    wrap.appendChild(b);
+    frag.appendChild(b);
   }
+  wrap.replaceChildren(frag);
 }
 
 function markSel() {
@@ -530,13 +584,12 @@ api.onUpdateDownloaded(info => {
 $('open-folder').addEventListener('click', openInstanceFolder);
 $('row-folder').addEventListener('click', openInstanceFolder);
 
-$('clear-log').addEventListener('click', () => {
-  $('log').textContent = '';
-  $('log-count').textContent = '0 lines';
-});
+$('clear-log').addEventListener('click', clearLog);
 
+let lastAutoRefresh = 0;
 async function refreshVersions(silent) {
   if (busy) return;
+  lastAutoRefresh = Date.now();
   if (!silent) log('[launcher] Refreshing version list...');
   try {
     const data = await api.getVersions();
@@ -562,7 +615,11 @@ $('refresh-versions').addEventListener('click', () => refreshVersions(false));
 // Keep the version list current: refresh every 15 minutes and whenever the
 // window regains focus, so newly released Minecraft versions appear automatically.
 setInterval(() => refreshVersions(true), 15 * 60 * 1000);
-window.addEventListener('focus', () => refreshVersions(true));
+window.addEventListener('focus', () => {
+  // Avoid a fetch + full pill rebuild on every alt-tab back to the window.
+  if (Date.now() - lastAutoRefresh < 120000) return;
+  refreshVersions(true);
+});
 
 $('play').addEventListener('click', async () => {
   if (busy) return;
@@ -600,8 +657,14 @@ $('play').addEventListener('click', async () => {
   }
 });
 
-api.onProgress(p => {
-  if (!busy) return;
+// Progress events fire very fast during parallel downloads; coalesce to one
+// DOM write per frame instead of thrashing layout on every event.
+let progPending = null;
+let progRaf = 0;
+function renderProgress() {
+  progRaf = 0;
+  const p = progPending;
+  if (!p || !busy) return;
   const pct = p.total ? Math.round((p.current / p.total) * 100) : 0;
   $('progress-fill').style.width = pct + '%';
   const label = PHASE_LABEL[p.phase] || p.phase;
@@ -609,6 +672,11 @@ api.onProgress(p => {
   $('progress-text').textContent = `${label}: ${p.current}/${p.total} (${pct}%)${detail}`;
   setStatus(label, `${p.current}/${p.total}${p.file ? ' · ' + p.file : ''}`);
   if (p.phase === 'java') log(`[launcher] ${p.file}`);
+}
+api.onProgress(p => {
+  if (!busy) return;
+  progPending = p;
+  if (!progRaf) progRaf = requestAnimationFrame(renderProgress);
 });
 
 api.onGameLog(line => log(line.replace(/\n$/, '')));
@@ -621,6 +689,23 @@ api.onGameExit(info => {
   $('progress-text').textContent = info.code === 0 ? 'Game closed.' : `Game exited with code ${info.code}.`;
   setStatus('Game closed', info.code === 0 ? 'See you next time' : `exit code ${info.code}`);
 });
+
+// Pointer ripple on press. Delegated so dynamically created pills get it too.
+// Uses only transform/opacity so it stays on the compositor (no layout/paint jank).
+const RIPPLE_SEL = '.launch-btn,.red-btn,.pill,.rail-btn,.circle-btn,.mini-btn,.seg-btn,.snap-pill';
+document.addEventListener('pointerdown', e => {
+  const host = e.target.closest(RIPPLE_SEL);
+  if (!host || host.disabled) return;
+  const rect = host.getBoundingClientRect();
+  const size = Math.max(rect.width, rect.height);
+  const ink = document.createElement('span');
+  ink.className = 'ripple-ink';
+  ink.style.width = ink.style.height = size + 'px';
+  ink.style.left = (e.clientX - rect.left - size / 2) + 'px';
+  ink.style.top = (e.clientY - rect.top - size / 2) + 'px';
+  host.appendChild(ink);
+  ink.addEventListener('animationend', () => ink.remove(), { once: true });
+}, { passive: true });
 
 init();
 
