@@ -58,6 +58,11 @@
         </div>
       </header>
 
+      <div id="net-banner" class="net-banner hidden" role="status">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.58 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+        <span><strong>No internet connection.</strong> Moji Launcher needs wifi — the AI Helper, mod browser, and Minecraft downloads/launch are paused until you're back online.</span>
+      </div>
+
       <main id="page-play" class="page active">
         <section class="col-main">
           <div class="panel launch-panel">
@@ -227,17 +232,20 @@
             <div class="field">
               <label for="ai-provider">AI Helper provider</label>
               <select id="ai-provider" class="settings-select">
+                <option value="gemini">Gemini (online, free key)</option>
+                <option value="grok">Grok (online, xAI paid key)</option>
                 <option value="offline">Built-in (offline, no key needed)</option>
-                <option value="gemini">Gemini (free key)</option>
-                <option value="grok">Grok (xAI, paid key)</option>
               </select>
-              <div class="note">Built-in answers common launcher & Minecraft questions on-device with no key. Gemini needs a free Google AI Studio key; Grok needs a paid xAI key.</div>
+              <div class="note">Gemini is the default online AI — it needs wifi and a free Google AI Studio key. Grok needs a paid xAI key. Built-in answers common launcher & Minecraft questions on-device with no key or wifi.</div>
             </div>
 
             <div class="field">
               <label for="gemini-key">Gemini API key</label>
               <input id="gemini-key" type="text" placeholder="Paste your free Google AI Studio (Gemini) API key" spellcheck="false" />
-              <div class="note">Get a free key at aistudio.google.com → Get API key. It stays on this device and is only sent to Google when you ask a question.</div>
+              <div class="note">
+                Get a free key at aistudio.google.com → Get API key, then paste it here. It stays on this device and is only sent to Google when you ask a question.
+                <button id="gemini-get-key" class="link-btn" type="button">Get a free key ↗</button>
+              </div>
             </div>
 
             <div class="field">
@@ -249,7 +257,7 @@
             <div class="field">
               <label for="grok-key">Grok (xAI) API key</label>
               <input id="grok-key" type="text" placeholder="Paste your xAI API key (console.x.ai)" spellcheck="false" />
-              <div class="note">Only used when the provider above is set to Grok. xAI keys require a billed account.</div>
+              <div class="note">Only used when the provider above is set to Grok. xAI keys require a billed account. <button id="grok-get-key" class="link-btn" type="button">Get an xAI key ↗</button></div>
             </div>
 
             <div class="field">

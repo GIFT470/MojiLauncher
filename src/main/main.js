@@ -26,7 +26,7 @@ const DEFAULT_SETTINGS = {
   geminiModel: '',
   grokKey: '',
   grokModel: '',
-  aiProvider: 'offline',
+  aiProvider: 'gemini',
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -178,6 +178,36 @@ ipcMain.handle('ai-ask', async (_e, { question, history }) => {
   } catch (err) {
     return { ok: false, error: err.message || String(err) };
   }
+});
+
+// Real reachability probe: any HTTP response (even 4xx) means DNS+TCP+TLS worked,
+// so we're online; only a network error/timeout counts as offline. navigator.onLine
+// only reflects NIC state and lies behind captive portals, hence the active check.
+ipcMain.handle('net-check', async () => {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 5000);
+  try {
+    await fetch('https://www.gstatic.com/generate_204', { method: 'HEAD', signal: ctrl.signal, cache: 'no-store' });
+    return { online: true };
+  } catch {
+    return { online: false };
+  } finally {
+    clearTimeout(timer);
+  }
+});
+
+// Open an external https link in the default browser. Allowlisted to trusted
+// constants only so a compromised renderer can't launch arbitrary URLs.
+const EXTERNAL_ALLOW = new Set([
+  'https://aistudio.google.com/apikey',
+  'https://console.x.ai/',
+]);
+ipcMain.handle('open-external', async (_e, url) => {
+  if (typeof url === 'string' && EXTERNAL_ALLOW.has(url)) {
+    await shell.openExternal(url);
+    return { ok: true };
+  }
+  return { ok: false };
 });
 
 ipcMain.handle('launch', async (_e, { versionId, versionUrl, username, loader, loaderVersion }) => {

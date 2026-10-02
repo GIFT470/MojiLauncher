@@ -13,6 +13,7 @@ let browseType = 'mod';
 let browseQuery = '';
 let browseTimer = null;
 let lastSearchKey = '';
+let online = true;
 
 const PHASE_LABEL = {
   java: 'Preparing Java',
@@ -110,7 +111,7 @@ function setStatusIdle() {
 
 function setBusy(isBusy) {
   busy = isBusy;
-  $('play').disabled = isBusy;
+  $('play').disabled = isBusy || !online;
   updateLaunchLabel();
   $('progress-wrap').classList.toggle('hidden', !isBusy);
   $('status-pill').classList.toggle('busy', isBusy);
@@ -357,6 +358,13 @@ async function runSearch(force) {
   lastSearchKey = key;
   $('browse-note').textContent = '';
 
+  if (!online) {
+    grid.innerHTML = '';
+    grid.appendChild(emptyMsg('No internet connection. The mod browser needs wifi — reconnect to search.'));
+    $('browse-count').textContent = '';
+    return;
+  }
+
   if (browseSource === 'curseforge' && !cfKey) {
     grid.innerHTML = '';
     grid.appendChild(emptyMsg('CurseForge browsing needs a free API key. Add it in Settings → CurseForge API key, then come back.'));
@@ -480,6 +488,10 @@ function autoGrow() {
 async function aiSend() {
   const text = aiInput.value.trim();
   if (!text || aiBusy) return;
+  if (!online && currentProvider() !== 'offline') {
+    addMessage('bot', escapeHtml('No internet connection — the online AI needs wifi. Reconnect, or switch the provider to Built-in (offline) in Settings.'), true);
+    return;
+  }
   aiBusy = true;
   aiSendBtn.disabled = true;
   aiInput.value = '';
@@ -533,7 +545,48 @@ $('grok-model').addEventListener('change', () => {
 $('ai-provider').addEventListener('change', () => {
   api.saveSettings({ aiProvider: currentProvider() });
   updateAiBadge();
+  applyOnlineState();
 });
+$('gemini-get-key').addEventListener('click', () => api.openExternal('https://aistudio.google.com/apikey'));
+$('grok-get-key').addEventListener('click', () => api.openExternal('https://console.x.ai/'));
+
+window.addEventListener('online', refreshOnline);
+window.addEventListener('offline', () => { online = false; applyOnlineState(); });
+window.addEventListener('focus', refreshOnline);
+setInterval(refreshOnline, 30000);
+
+/* ---------- Connectivity gate (app needs wifi) ---------- */
+function applyOnlineState() {
+  $('net-banner').classList.toggle('hidden', online);
+  document.body.classList.toggle('offline', !online);
+  $('play').disabled = busy || !online;
+  updateLaunchLabel();
+  // Built-in offline AI works without wifi; online providers (Gemini/Grok) don't.
+  const needsWifi = currentProvider() !== 'offline';
+  $('ai-send').disabled = !online && needsWifi;
+  $('ai-input').placeholder = (!online && needsWifi)
+    ? 'No internet — the online AI needs wifi (or switch to Built-in in Settings)'
+    : 'Type a question... (Enter to send, Shift+Enter for a new line)';
+}
+
+async function refreshOnline() {
+  let next;
+  try {
+    const res = await api.netCheck();
+    next = !!(res && res.online);
+  } catch {
+    next = navigator.onLine !== false;
+  }
+  if (next === online) return online;
+  online = next;
+  applyOnlineState();
+  if (online) {
+    // Reconnected: reload the manifest if we never got one (started offline).
+    if (!allVersions.length) { try { $('refresh-versions').click(); } catch {} }
+    if ($('page-browse').classList.contains('active')) runSearch(true);
+  }
+  return online;
+}
 
 async function init() {
   const s = await api.getSettings();
@@ -554,7 +607,7 @@ async function init() {
   grokKey = s.grokKey || '';
   $('grok-key').value = grokKey;
   $('grok-model').value = s.grokModel || '';
-  $('ai-provider').value = (s.aiProvider === 'grok' || s.aiProvider === 'gemini') ? s.aiProvider : 'offline';
+  $('ai-provider').value = ['grok', 'gemini', 'offline'].includes(s.aiProvider) ? s.aiProvider : 'gemini';
   updateAiBadge();
   if (s.loader) $('loader').value = s.loader;
   updateAvatars();
@@ -581,6 +634,9 @@ async function init() {
       ? 'Detected: ' + javas.map(j => `Java ${j.major} (${j.path})`).join(', ')
       : 'No Java detected — the launcher will download one automatically.';
   } catch {}
+
+  applyOnlineState();
+  refreshOnline();
 }
 
 $('tab-play').addEventListener('click', () => switchTab('play'));
@@ -789,6 +845,11 @@ window.addEventListener('focus', () => {
 
 $('play').addEventListener('click', async () => {
   if (busy) return;
+  if (!online) {
+    log('[launcher] No internet connection — Minecraft needs wifi to download and launch.');
+    setStatus('No internet', 'Reconnect to play');
+    return;
+  }
   const username = $('username').value.trim() || 'Player';
   const versionId = selectedVersionId;
   const version = allVersions.find(v => v.id === versionId);
