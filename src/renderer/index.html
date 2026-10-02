@@ -186,7 +186,7 @@
             <div id="ai-messages" class="ai-messages">
               <div class="ai-welcome">
                 <strong>Ask me anything.</strong>
-                <span>Minecraft help, mod troubleshooting, or any question at all. Add a free Gemini API key in Settings to start.</span>
+                <span>Minecraft help, mod troubleshooting, or any question at all. Works offline with the built-in helper — no API key needed. Add a free Gemini key in Settings for open-ended answers.</span>
               </div>
             </div>
             <div class="ai-composer">
@@ -227,10 +227,11 @@
             <div class="field">
               <label for="ai-provider">AI Helper provider</label>
               <select id="ai-provider" class="settings-select">
-                <option value="gemini">Gemini (free tier)</option>
-                <option value="grok">Grok (xAI)</option>
+                <option value="offline">Built-in (offline, no key needed)</option>
+                <option value="gemini">Gemini (free key)</option>
+                <option value="grok">Grok (xAI, paid key)</option>
               </select>
-              <div class="note">Gemini works with a free Google AI Studio key. Grok needs an xAI key from console.x.ai (paid).</div>
+              <div class="note">Built-in answers common launcher & Minecraft questions on-device with no key. Gemini needs a free Google AI Studio key; Grok needs a paid xAI key.</div>
             </div>
 
             <div class="field">

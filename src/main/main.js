@@ -26,7 +26,7 @@ const DEFAULT_SETTINGS = {
   geminiModel: '',
   grokKey: '',
   grokModel: '',
-  aiProvider: 'gemini',
+  aiProvider: 'offline',
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -170,9 +170,9 @@ ipcMain.handle('mod-install', async (_e, { fileUrl, filename, versionId, loader,
 });
 
 ipcMain.handle('ai-ask', async (_e, { question, history }) => {
-  const provider = settings.aiProvider === 'grok' ? 'grok' : 'gemini';
-  const apiKey = provider === 'grok' ? settings.grokKey : settings.geminiKey;
-  const model = provider === 'grok' ? settings.grokModel : settings.geminiModel;
+  const provider = settings.aiProvider === 'grok' ? 'grok' : settings.aiProvider === 'gemini' ? 'gemini' : 'offline';
+  const apiKey = provider === 'grok' ? settings.grokKey : provider === 'gemini' ? settings.geminiKey : '';
+  const model = provider === 'grok' ? settings.grokModel : provider === 'gemini' ? settings.geminiModel : '';
   try {
     return await ai.ask({ question, history, provider, apiKey, model });
   } catch (err) {

@@ -399,18 +399,24 @@ let aiHistory = [];   // [{ role: 'user'|'model', text }]
 let aiBusy = false;
 
 const AI_WELCOME = '<div class="ai-welcome"><strong>Ask me anything.</strong>' +
-  '<span>Minecraft help, mod troubleshooting, or any question at all. Add a free Gemini API key in Settings to start.</span></div>';
+  '<span>Minecraft help, mod troubleshooting, or any question at all. Works offline with the built-in helper — no API key needed. Add a free Gemini key in Settings for open-ended answers.</span></div>';
 
 function currentProvider() {
-  return $('ai-provider').value === 'grok' ? 'grok' : 'gemini';
+  const v = $('ai-provider').value;
+  return v === 'grok' || v === 'gemini' ? v : 'offline';
 }
 
 function updateAiBadge() {
   const provider = currentProvider();
+  const badge = $('ai-model-badge');
+  if (provider === 'offline') {
+    badge.textContent = 'offline · built-in';
+    badge.title = 'On-device answers — no API key needed';
+    return;
+  }
   const def = provider === 'grok' ? 'grok-4' : 'gemini-2.5-flash';
   const model = ($(provider + '-model').value || '').trim() || def;
   const key = provider === 'grok' ? grokKey : geminiKey;
-  const badge = $('ai-model-badge');
   badge.textContent = `${provider} · ${model}`;
   badge.title = key ? `API key set · ${model}` : `No ${provider} API key set — add one in Settings`;
 }
@@ -548,7 +554,7 @@ async function init() {
   grokKey = s.grokKey || '';
   $('grok-key').value = grokKey;
   $('grok-model').value = s.grokModel || '';
-  $('ai-provider').value = s.aiProvider === 'grok' ? 'grok' : 'gemini';
+  $('ai-provider').value = (s.aiProvider === 'grok' || s.aiProvider === 'gemini') ? s.aiProvider : 'offline';
   updateAiBadge();
   if (s.loader) $('loader').value = s.loader;
   updateAvatars();
