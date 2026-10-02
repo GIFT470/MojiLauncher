@@ -95,12 +95,15 @@ async function curseforgeSearch({ apiKey, query, type, gameVersion, loader, limi
   };
 }
 
-async function curseforgeFiles({ apiKey, modId, gameVersion }) {
+async function curseforgeFiles({ apiKey, modId, gameVersion, loader }) {
   if (!apiKey) return [];
-  const params = new URLSearchParams({ pageSize: '50' });
-  if (gameVersion) params.set('gameVersion', gameVersion);
-  const data = await fetchJson(`${CURSEFORGE}/mods/${modId}/files?${params}`, { 'x-api-key': apiKey, accept: 'application/json' });
-  return (data.data || [])
+  const build = withLoader => {
+    const params = new URLSearchParams({ pageSize: '50' });
+    if (gameVersion) params.set('gameVersion', gameVersion);
+    if (withLoader && CF_LOADER[loader]) params.set('modLoaderType', String(CF_LOADER[loader]));
+    return `${CURSEFORGE}/mods/${modId}/files?${params}`;
+  };
+  const mapFiles = data => (data.data || [])
     .filter(f => f.downloadUrl && !f.isAlternate)
     .map(f => ({
       id: f.id,
@@ -109,6 +112,15 @@ async function curseforgeFiles({ apiKey, modId, gameVersion }) {
       fileUrl: f.downloadUrl,
       gameVersions: f.gameVersions || [],
     }));
+  const headers = { 'x-api-key': apiKey, accept: 'application/json' };
+  // Filter to the selected loader so we never drop a Forge-only jar into a
+  // Fabric/Quilt instance. Fall back to unfiltered when the loader tag yields
+  // nothing (universal jars are sometimes untagged).
+  if (CF_LOADER[loader]) {
+    const filtered = mapFiles(await fetchJson(build(true), headers));
+    if (filtered.length) return filtered;
+  }
+  return mapFiles(await fetchJson(build(false), headers));
 }
 
 async function search(opts) {
@@ -117,7 +129,7 @@ async function search(opts) {
 
 async function files(opts) {
   return opts.source === 'curseforge'
-    ? curseforgeFiles({ apiKey: opts.apiKey, modId: opts.projectId, gameVersion: opts.gameVersion })
+    ? curseforgeFiles({ apiKey: opts.apiKey, modId: opts.projectId, gameVersion: opts.gameVersion, loader: opts.loader })
     : modrinthFiles(opts);
 }
 

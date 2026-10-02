@@ -81,7 +81,9 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => {
-  if (gameProcess) gameProcess.kill();
+  // Never kill a running game just because the launcher window closed — the
+  // spawned JVM is independent and players expect their session to survive
+  // (matching the vanilla launcher). On macOS keep the app alive as usual.
   if (process.platform !== 'darwin') app.quit();
 });
 

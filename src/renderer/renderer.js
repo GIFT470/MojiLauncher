@@ -186,6 +186,7 @@ async function populateLoaderVersions(preferred) {
     row.classList.add('off');
     note.classList.add('hidden');
     sub.textContent = loader === 'vanilla' ? 'Not used' : '—';
+    sel.innerHTML = '';
     loaderVersions = [];
     return;
   }
@@ -196,6 +197,7 @@ async function populateLoaderVersions(preferred) {
   const res = await api.getLoaderVersions({ loader, gameVersion });
   if (!res.ok || res.versions.length === 0) {
     row.classList.add('off');
+    sel.innerHTML = '';
     loaderVersions = [];
     sub.textContent = 'Not available';
     note.classList.remove('hidden');
