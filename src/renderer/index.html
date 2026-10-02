@@ -225,15 +225,36 @@
             </div>
 
             <div class="field">
-              <label for="gemini-key">Gemini API key (for AI Helper)</label>
+              <label for="ai-provider">AI Helper provider</label>
+              <select id="ai-provider" class="settings-select">
+                <option value="gemini">Gemini (free tier)</option>
+                <option value="grok">Grok (xAI)</option>
+              </select>
+              <div class="note">Gemini works with a free Google AI Studio key. Grok needs an xAI key from console.x.ai (paid).</div>
+            </div>
+
+            <div class="field">
+              <label for="gemini-key">Gemini API key</label>
               <input id="gemini-key" type="text" placeholder="Paste your free Google AI Studio (Gemini) API key" spellcheck="false" />
-              <div class="note">Get a free key at aistudio.google.com → Get API key. It stays on this device and is only sent to Google's Gemini API when you ask a question.</div>
+              <div class="note">Get a free key at aistudio.google.com → Get API key. It stays on this device and is only sent to Google when you ask a question.</div>
             </div>
 
             <div class="field">
               <label for="gemini-model">Gemini model (optional)</label>
               <input id="gemini-model" type="text" placeholder="gemini-2.5-flash" spellcheck="false" />
-              <div class="note">Leave empty for gemini-2.5-flash. Set an exact model id (e.g. a newer Gemini Flash) if you prefer.</div>
+              <div class="note">Leave empty for gemini-2.5-flash. Set an exact model id if you prefer.</div>
+            </div>
+
+            <div class="field">
+              <label for="grok-key">Grok (xAI) API key</label>
+              <input id="grok-key" type="text" placeholder="Paste your xAI API key (console.x.ai)" spellcheck="false" />
+              <div class="note">Only used when the provider above is set to Grok. xAI keys require a billed account.</div>
+            </div>
+
+            <div class="field">
+              <label for="grok-model">Grok model (optional)</label>
+              <input id="grok-model" type="text" placeholder="grok-4" spellcheck="false" />
+              <div class="note">Leave empty for grok-4. Set an exact model id (e.g. grok-4-fast) if you prefer.</div>
             </div>
 
             <div class="field row2">

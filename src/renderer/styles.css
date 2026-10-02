@@ -553,6 +553,23 @@ input[type="text"]:focus, input[type="number"]:focus {
   box-shadow: 0 0 0 4px rgba(224, 52, 63, 0.16);
 }
 
+.settings-select {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--r-control);
+  padding: 10px 13px;
+  font-size: 13.5px; font-family: inherit;
+  outline: none; cursor: pointer;
+  transition: border-color 0.25s var(--ease), box-shadow 0.25s var(--ease);
+}
+.settings-select:hover { border-color: var(--border-strong); }
+.settings-select:focus {
+  border-color: rgba(224, 52, 63, 0.6);
+  box-shadow: 0 0 0 4px rgba(224, 52, 63, 0.16);
+}
+.settings-select option { background: var(--panel-solid); color: var(--text); }
+
 .row { display: flex; gap: 10px; }
 .row input { flex: 1; }
 .row2 { flex-direction: row; gap: 18px; }

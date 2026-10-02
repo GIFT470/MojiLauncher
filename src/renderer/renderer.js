@@ -7,6 +7,7 @@ let selectedVersionId = '';
 let busy = false;
 let cfKey = '';
 let geminiKey = '';
+let grokKey = '';
 let browseSource = 'modrinth';
 let browseType = 'mod';
 let browseQuery = '';
@@ -400,11 +401,18 @@ let aiBusy = false;
 const AI_WELCOME = '<div class="ai-welcome"><strong>Ask me anything.</strong>' +
   '<span>Minecraft help, mod troubleshooting, or any question at all. Add a free Gemini API key in Settings to start.</span></div>';
 
+function currentProvider() {
+  return $('ai-provider').value === 'grok' ? 'grok' : 'gemini';
+}
+
 function updateAiBadge() {
-  const model = ($('gemini-model').value || '').trim() || 'gemini-2.5-flash';
+  const provider = currentProvider();
+  const def = provider === 'grok' ? 'grok-4' : 'gemini-2.5-flash';
+  const model = ($(provider + '-model').value || '').trim() || def;
+  const key = provider === 'grok' ? grokKey : geminiKey;
   const badge = $('ai-model-badge');
-  badge.textContent = model;
-  badge.title = geminiKey ? `API key set · ${model}` : 'No API key set — add one in Settings';
+  badge.textContent = `${provider} · ${model}`;
+  badge.title = key ? `API key set · ${model}` : `No ${provider} API key set — add one in Settings`;
 }
 
 function escapeHtml(s) {
@@ -466,11 +474,6 @@ function autoGrow() {
 async function aiSend() {
   const text = aiInput.value.trim();
   if (!text || aiBusy) return;
-  if (!geminiKey) {
-    addMessage('bot', escapeHtml('No Gemini API key set. Open Settings, paste a free key from aistudio.google.com, then Save settings.'), true);
-    switchTab('settings');
-    return;
-  }
   aiBusy = true;
   aiSendBtn.disabled = true;
   aiInput.value = '';
@@ -483,11 +486,11 @@ async function aiSend() {
     aiHistory.push({ role: 'user', text }, { role: 'model', text: res.text });
     if (aiHistory.length > 12) aiHistory = aiHistory.slice(-12);
     addMessage('bot', formatAnswer(res.text));
+  } else if (res.error === 'no-key') {
+    addMessage('bot', escapeHtml(`No API key set for ${currentProvider()}. Open Settings, add a key, then Save settings.`), true);
+    switchTab('settings');
   } else {
-    const msg = res.error === 'no-key'
-      ? 'No Gemini API key set. Add one in Settings.'
-      : `AI Helper error: ${res.error}`;
-    addMessage('bot', escapeHtml(msg), true);
+    addMessage('bot', escapeHtml(`AI Helper error: ${res.error}`), true);
   }
   aiBusy = false;
   aiSendBtn.disabled = false;
@@ -512,6 +515,19 @@ $('gemini-model').addEventListener('change', () => {
   api.saveSettings({ geminiModel: $('gemini-model').value.trim() });
   updateAiBadge();
 });
+$('grok-key').addEventListener('change', () => {
+  grokKey = $('grok-key').value.trim();
+  api.saveSettings({ grokKey });
+  updateAiBadge();
+});
+$('grok-model').addEventListener('change', () => {
+  api.saveSettings({ grokModel: $('grok-model').value.trim() });
+  updateAiBadge();
+});
+$('ai-provider').addEventListener('change', () => {
+  api.saveSettings({ aiProvider: currentProvider() });
+  updateAiBadge();
+});
 
 async function init() {
   const s = await api.getSettings();
@@ -529,6 +545,10 @@ async function init() {
   geminiKey = s.geminiKey || '';
   $('gemini-key').value = geminiKey;
   $('gemini-model').value = s.geminiModel || '';
+  grokKey = s.grokKey || '';
+  $('grok-key').value = grokKey;
+  $('grok-model').value = s.grokModel || '';
+  $('ai-provider').value = s.aiProvider === 'grok' ? 'grok' : 'gemini';
   updateAiBadge();
   if (s.loader) $('loader').value = s.loader;
   updateAvatars();
@@ -656,9 +676,13 @@ $('save-settings').addEventListener('click', async () => {
     curseforgeKey: $('curseforge-key').value.trim(),
     geminiKey: $('gemini-key').value.trim(),
     geminiModel: $('gemini-model').value.trim(),
+    grokKey: $('grok-key').value.trim(),
+    grokModel: $('grok-model').value.trim(),
+    aiProvider: currentProvider(),
   });
   cfKey = $('curseforge-key').value.trim();
   geminiKey = $('gemini-key').value.trim();
+  grokKey = $('grok-key').value.trim();
   updateAiBadge();
   $('save-status').classList.remove('hidden');
   setTimeout(() => $('save-status').classList.add('hidden'), 2000);

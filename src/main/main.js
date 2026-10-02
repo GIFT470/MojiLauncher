@@ -24,6 +24,9 @@ const DEFAULT_SETTINGS = {
   curseforgeKey: '',
   geminiKey: '',
   geminiModel: '',
+  grokKey: '',
+  grokModel: '',
+  aiProvider: 'gemini',
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -167,8 +170,11 @@ ipcMain.handle('mod-install', async (_e, { fileUrl, filename, versionId, loader,
 });
 
 ipcMain.handle('ai-ask', async (_e, { question, history }) => {
+  const provider = settings.aiProvider === 'grok' ? 'grok' : 'gemini';
+  const apiKey = provider === 'grok' ? settings.grokKey : settings.geminiKey;
+  const model = provider === 'grok' ? settings.grokModel : settings.geminiModel;
   try {
-    return await ai.ask({ question, history, apiKey: settings.geminiKey, model: settings.geminiModel });
+    return await ai.ask({ question, history, provider, apiKey, model });
   } catch (err) {
     return { ok: false, error: err.message || String(err) };
   }
