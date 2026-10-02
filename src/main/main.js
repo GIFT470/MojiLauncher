@@ -55,12 +55,24 @@ async function saveSettings() {
 
 let win = null;
 let gameProcess = null;
+// Set when the launcher window is closed while a game is running: we keep the
+// app process alive (invisible) so the game is never torn down, then quit once
+// the game exits. See window-all-closed + the gameProcess exit handler.
+let pendingQuitOnGameExit = false;
 
 function send(channel, payload) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
 }
 
+// Called when a running game exits. If the launcher window was closed while the
+// game was running (app kept alive in the background), quit now that it's done —
+// unless the user reopened a window in the meantime.
+function quitIfBackgrounded() {
+  if (pendingQuitOnGameExit && BrowserWindow.getAllWindows().length === 0) app.quit();
+}
+
 async function createWindow() {
+  pendingQuitOnGameExit = false;
   win = new BrowserWindow({
     width: 1060,
     height: 660,
@@ -78,6 +90,23 @@ async function createWindow() {
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
 }
 
+// Single instance: if the launcher is backgrounded (window closed while a game
+// runs) and the user launches it again, restore the existing window instead of
+// starting a second process that would fight over the same settings/instances.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (win && !win.isDestroyed()) {
+      if (win.isMinimized()) win.restore();
+      win.show();
+      win.focus();
+    } else if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
+  });
+}
+
 app.whenReady().then(async () => {
   await loadSettings();
   await createWindow();
@@ -90,7 +119,14 @@ app.on('window-all-closed', () => {
   // Never kill a running game just because the launcher window closed — the
   // spawned JVM is independent and players expect their session to survive
   // (matching the vanilla launcher). On macOS keep the app alive as usual.
-  if (process.platform !== 'darwin') app.quit();
+  if (process.platform === 'darwin') return;
+  if (gameProcess) {
+    // Keep this process alive (no window) so the game isn't orphaned or torn
+    // down; we auto-quit from the game's exit handler once it finishes.
+    pendingQuitOnGameExit = true;
+    return;
+  }
+  app.quit();
 });
 
 ipcMain.handle('get-settings', () => settings);
@@ -266,10 +302,12 @@ ipcMain.handle('launch', async (_e, { versionId, versionUrl, username, loader, l
     gameProcess.on('exit', (code, signal) => {
       gameProcess = null;
       send('game-exit', { code, signal });
+      quitIfBackgrounded();
     });
     gameProcess.on('error', err => {
       gameProcess = null;
       send('game-exit', { code: -1, error: err.message });
+      quitIfBackgrounded();
     });
 
     return { ok: true, pid: gameProcess.pid };
