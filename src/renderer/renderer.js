@@ -6,6 +6,7 @@ let loaderVersions = [];
 let selectedVersionId = '';
 let busy = false;
 let cfKey = '';
+let geminiKey = '';
 let browseSource = 'modrinth';
 let browseType = 'mod';
 let browseQuery = '';
@@ -237,11 +238,12 @@ async function openInstanceFolder() {
 }
 
 function switchTab(name) {
-  for (const t of ['play', 'browse', 'settings']) {
+  for (const t of ['play', 'browse', 'ai', 'settings']) {
     $('tab-' + t).classList.toggle('active', t === name);
     $('page-' + t).classList.toggle('active', t === name);
   }
   if (name === 'browse') runSearch(false);
+  if (name === 'ai') setTimeout(() => $('ai-input').focus(), 60);
 }
 
 /* ---------- Mod browser (Modrinth / CurseForge) ---------- */
@@ -388,6 +390,129 @@ async function runSearch(force) {
   for (const hit of res.hits) grid.appendChild(modCard(hit));
 }
 
+/* ---------- AI Helper (Gemini) ---------- */
+const aiMsgs = $('ai-messages');
+const aiInput = $('ai-input');
+const aiSendBtn = $('ai-send');
+let aiHistory = [];   // [{ role: 'user'|'model', text }]
+let aiBusy = false;
+
+const AI_WELCOME = '<div class="ai-welcome"><strong>Ask me anything.</strong>' +
+  '<span>Minecraft help, mod troubleshooting, or any question at all. Add a free Gemini API key in Settings to start.</span></div>';
+
+function updateAiBadge() {
+  const model = ($('gemini-model').value || '').trim() || 'gemini-2.5-flash';
+  const badge = $('ai-model-badge');
+  badge.textContent = model;
+  badge.title = geminiKey ? `API key set · ${model}` : 'No API key set — add one in Settings';
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// Minimal, XSS-safe markdown: escape first, then inline code + bold. URLs stay
+// plain text (the app has no window-open handler, so clickable links are avoided).
+function formatAnswer(text) {
+  let h = escapeHtml(text);
+  h = h.replace(/`([^`]+)`/g, '<code>$1</code>');
+  h = h.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  return h;
+}
+
+function clearWelcome() {
+  const w = aiMsgs.querySelector('.ai-welcome');
+  if (w) w.remove();
+}
+
+const AVATAR = {
+  user: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
+  bot: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.3L18 9l-4.1 1.7L12 15l-1.9-4.3L6 9l4.1-1.7z"/></svg>',
+};
+
+function addMessage(role, html, isErr) {
+  clearWelcome();
+  const wrap = document.createElement('div');
+  wrap.className = 'msg ' + role;
+  const av = document.createElement('span');
+  av.className = 'msg-av';
+  av.innerHTML = AVATAR[role];
+  const bubble = document.createElement('div');
+  bubble.className = 'msg-bubble' + (isErr ? ' err' : '');
+  bubble.innerHTML = html;
+  wrap.append(av, bubble);
+  aiMsgs.appendChild(wrap);
+  aiMsgs.scrollTop = aiMsgs.scrollHeight;
+  return bubble;
+}
+
+function addTyping() {
+  clearWelcome();
+  const wrap = document.createElement('div');
+  wrap.className = 'msg bot';
+  wrap.innerHTML = `<span class="msg-av">${AVATAR.bot}</span>` +
+    '<div class="msg-bubble"><span class="typing"><i></i><i></i><i></i></span></div>';
+  aiMsgs.appendChild(wrap);
+  aiMsgs.scrollTop = aiMsgs.scrollHeight;
+  return wrap;
+}
+
+function autoGrow() {
+  aiInput.style.height = 'auto';
+  aiInput.style.height = Math.min(aiInput.scrollHeight, 140) + 'px';
+}
+
+async function aiSend() {
+  const text = aiInput.value.trim();
+  if (!text || aiBusy) return;
+  if (!geminiKey) {
+    addMessage('bot', escapeHtml('No Gemini API key set. Open Settings, paste a free key from aistudio.google.com, then Save settings.'), true);
+    switchTab('settings');
+    return;
+  }
+  aiBusy = true;
+  aiSendBtn.disabled = true;
+  aiInput.value = '';
+  autoGrow();
+  addMessage('user', escapeHtml(text));
+  const typing = addTyping();
+  const res = await api.aiAsk({ question: text, history: aiHistory });
+  typing.remove();
+  if (res.ok) {
+    aiHistory.push({ role: 'user', text }, { role: 'model', text: res.text });
+    if (aiHistory.length > 12) aiHistory = aiHistory.slice(-12);
+    addMessage('bot', formatAnswer(res.text));
+  } else {
+    const msg = res.error === 'no-key'
+      ? 'No Gemini API key set. Add one in Settings.'
+      : `AI Helper error: ${res.error}`;
+    addMessage('bot', escapeHtml(msg), true);
+  }
+  aiBusy = false;
+  aiSendBtn.disabled = false;
+  aiInput.focus();
+}
+
+aiSendBtn.addEventListener('click', aiSend);
+aiInput.addEventListener('input', autoGrow);
+aiInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); aiSend(); }
+});
+$('ai-clear').addEventListener('click', () => {
+  aiHistory = [];
+  aiMsgs.innerHTML = AI_WELCOME;
+});
+$('gemini-key').addEventListener('change', () => {
+  geminiKey = $('gemini-key').value.trim();
+  api.saveSettings({ geminiKey });
+  updateAiBadge();
+});
+$('gemini-model').addEventListener('change', () => {
+  api.saveSettings({ geminiModel: $('gemini-model').value.trim() });
+  updateAiBadge();
+});
+
 async function init() {
   const s = await api.getSettings();
   $('username').value = s.username || '';
@@ -401,6 +526,10 @@ async function init() {
   $('height').value = s.height || '';
   cfKey = s.curseforgeKey || '';
   $('curseforge-key').value = cfKey;
+  geminiKey = s.geminiKey || '';
+  $('gemini-key').value = geminiKey;
+  $('gemini-model').value = s.geminiModel || '';
+  updateAiBadge();
   if (s.loader) $('loader').value = s.loader;
   updateAvatars();
   updateLoaderUI();
@@ -430,6 +559,7 @@ async function init() {
 
 $('tab-play').addEventListener('click', () => switchTab('play'));
 $('tab-browse').addEventListener('click', () => switchTab('browse'));
+$('tab-ai').addEventListener('click', () => switchTab('ai'));
 $('tab-settings').addEventListener('click', () => switchTab('settings'));
 $('goto-settings').addEventListener('click', () => switchTab('settings'));
 
@@ -524,8 +654,12 @@ $('save-settings').addEventListener('click', async () => {
     width: Number($('width').value) || 0,
     height: Number($('height').value) || 0,
     curseforgeKey: $('curseforge-key').value.trim(),
+    geminiKey: $('gemini-key').value.trim(),
+    geminiModel: $('gemini-model').value.trim(),
   });
   cfKey = $('curseforge-key').value.trim();
+  geminiKey = $('gemini-key').value.trim();
+  updateAiBadge();
   $('save-status').classList.remove('hidden');
   setTimeout(() => $('save-status').classList.add('hidden'), 2000);
 });

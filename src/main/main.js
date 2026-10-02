@@ -7,6 +7,7 @@ const mc = require('./mc-core');
 const { ensureJava, findInstalledJavas } = require('./java');
 const { getLoaderVersions, ensureLoader, resolveInstanceId } = require('./loaders');
 const mods = require('./mods');
+const ai = require('./ai');
 
 const SETTINGS_FILE = () => path.join(app.getPath('userData'), 'settings.json');
 
@@ -21,6 +22,8 @@ const DEFAULT_SETTINGS = {
   loader: 'vanilla',
   loaderVersion: '',
   curseforgeKey: '',
+  geminiKey: '',
+  geminiModel: '',
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -160,6 +163,14 @@ ipcMain.handle('mod-install', async (_e, { fileUrl, filename, versionId, loader,
     return { ok: true, dest };
   } catch (err) {
     return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('ai-ask', async (_e, { question, history }) => {
+  try {
+    return await ai.ask({ question, history, apiKey: settings.geminiKey, model: settings.geminiModel });
+  } catch (err) {
+    return { ok: false, error: err.message || String(err) };
   }
 });
 

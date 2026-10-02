@@ -22,6 +22,9 @@
       <button id="tab-browse" class="rail-btn" title="Browse mods & modpacks">
         <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
       </button>
+      <button id="tab-ai" class="rail-btn" title="AI Helper">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M12 7l1.2 2.6L16 11l-2.8 1.4L12 15l-1.2-2.6L8 11l2.8-1.4z"/></svg>
+      </button>
       <div class="rail-spacer"></div>
       <div id="rail-avatar" class="rail-avatar" title="Offline profile">P</div>
       <button id="tab-settings" class="rail-btn" title="Settings">
@@ -166,6 +169,36 @@
         </section>
       </main>
 
+      <main id="page-ai" class="page">
+        <section class="ai-wrap">
+          <div class="panel ai-panel">
+            <div class="ai-head">
+              <span class="ai-title">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.3L18 9l-4.1 1.7L12 15l-1.9-4.3L6 9l4.1-1.7z"/><path d="M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9z"/></svg>
+                AI Helper
+              </span>
+              <span id="ai-model-badge" class="ai-badge">Gemini Flash</span>
+              <div class="ai-head-spacer"></div>
+              <button id="ai-clear" class="circle-btn" title="Clear conversation">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              </button>
+            </div>
+            <div id="ai-messages" class="ai-messages">
+              <div class="ai-welcome">
+                <strong>Ask me anything.</strong>
+                <span>Minecraft help, mod troubleshooting, or any question at all. Add a free Gemini API key in Settings to start.</span>
+              </div>
+            </div>
+            <div class="ai-composer">
+              <textarea id="ai-input" rows="1" placeholder="Type a question... (Enter to send, Shift+Enter for a new line)" spellcheck="false"></textarea>
+              <button id="ai-send" class="red-btn" title="Send">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              </button>
+            </div>
+          </div>
+        </section>
+      </main>
+
       <main id="page-settings" class="page">
         <section class="settings-wrap">
           <div class="panel settings-panel">
@@ -189,6 +222,18 @@
               <label for="curseforge-key">CurseForge API key (optional)</label>
               <input id="curseforge-key" type="text" placeholder="Paste your free api.curseforge.com key to enable CurseForge" spellcheck="false" />
               <div class="note">Modrinth works with no key. CurseForge browsing needs a free Core API key from console.curseforge.com.</div>
+            </div>
+
+            <div class="field">
+              <label for="gemini-key">Gemini API key (for AI Helper)</label>
+              <input id="gemini-key" type="text" placeholder="Paste your free Google AI Studio (Gemini) API key" spellcheck="false" />
+              <div class="note">Get a free key at aistudio.google.com → Get API key. It stays on this device and is only sent to Google's Gemini API when you ask a question.</div>
+            </div>
+
+            <div class="field">
+              <label for="gemini-model">Gemini model (optional)</label>
+              <input id="gemini-model" type="text" placeholder="gemini-2.5-flash" spellcheck="false" />
+              <div class="note">Leave empty for gemini-2.5-flash. Set an exact model id (e.g. a newer Gemini Flash) if you prefer.</div>
             </div>
 
             <div class="field row2">

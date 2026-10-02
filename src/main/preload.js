@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('launcher', {
   modSearch: opts => ipcRenderer.invoke('mod-search', opts),
   modFiles: opts => ipcRenderer.invoke('mod-files', opts),
   modInstall: opts => ipcRenderer.invoke('mod-install', opts),
+  aiAsk: opts => ipcRenderer.invoke('ai-ask', opts),
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   restartApp: () => ipcRenderer.invoke('restart-app'),
   onUpdateDownloaded: cb => ipcRenderer.on('update-downloaded', (_e, info) => cb(info)),
