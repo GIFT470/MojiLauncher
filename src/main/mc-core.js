@@ -321,6 +321,31 @@ async function installVersion(gameDir, vj, onProgress) {
   }
 }
 
+// Disk-only readiness check: does every file this version needs already exist
+// at full size? No network. Used to decide whether a version can launch offline.
+async function checkInstalled(gameDir, vj) {
+  const { files } = collectDownloads(gameDir, vj);
+  let total = files.length;
+  let missing = 0;
+  for (const f of files) {
+    if (!(await existsFull(f.dest, f.size))) missing++;
+  }
+  if (vj.assetIndex) {
+    const indexFile = path.join(gameDir, 'assets', 'indexes', vj.assetIndex.id + '.json');
+    if (!(await existsFull(indexFile))) {
+      return { ready: false, missing: missing + 1, total: total + 1 };
+    }
+    const index = JSON.parse(await fsp.readFile(indexFile, 'utf8'));
+    const objs = Object.values(index.objects || {});
+    total += objs.length;
+    for (const o of objs) {
+      const dest = path.join(gameDir, 'assets', 'objects', o.hash.slice(0, 2), o.hash);
+      if (!(await existsFull(dest, o.size))) missing++;
+    }
+  }
+  return { ready: missing === 0, missing, total };
+}
+
 async function extractNatives(gameDir, vj, nativeJars) {
   const nativesDir = path.join(gameDir, 'versions', vj.id, `${vj.id}-natives`);
   await fsp.rm(nativesDir, { recursive: true, force: true });
@@ -454,6 +479,7 @@ module.exports = {
   getVersionManifest,
   getVersionJson,
   installVersion,
+  checkInstalled,
   buildLaunchArgs,
   buildClasspath,
   offlineUuid,

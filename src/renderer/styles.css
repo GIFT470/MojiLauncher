@@ -635,6 +635,54 @@ body.offline #play { opacity: 0.55; }
 .link-btn:hover { background: rgba(224, 52, 63, 0.14); border-color: rgba(224, 52, 63, 0.5); }
 .link-btn:active { transform: scale(0.97); }
 
+/* ---------- Save-for-offline row (Play tab) ---------- */
+.offline-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.ghost-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 13px;
+  border-radius: var(--r-control);
+  border: 1px solid var(--border-strong);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.16s var(--ease), border-color 0.16s var(--ease), transform 0.12s var(--ease);
+}
+.ghost-btn svg { color: var(--accent-bright); }
+.ghost-btn:hover { background: rgba(224, 52, 63, 0.12); border-color: rgba(224, 52, 63, 0.45); }
+.ghost-btn:active { transform: scale(0.98); }
+.ghost-btn:disabled { opacity: 0.5; cursor: default; transform: none; }
+.offline-state { font-size: 12px; color: var(--muted); }
+.offline-state.ready { color: #6ee7a8; }
+.offline-state.not-ready { color: var(--danger); }
+
+/* ---------- Saved-for-offline card (Settings) ---------- */
+.saved-card {
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  padding: 12px 14px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.01));
+}
+.saved-total { display: flex; align-items: baseline; gap: 10px; margin: 4px 0 10px; }
+.saved-total strong { font-size: 26px; font-weight: 700; letter-spacing: -0.5px; color: #fff; }
+.saved-total span { font-size: 12px; color: var(--muted); }
+.saved-bars { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
+.saved-line {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 12px; color: var(--muted);
+  padding: 3px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+.saved-line b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+
 /* ---------- Ambient background image ---------- */
 #bg {
   position: fixed; inset: 0; z-index: -2;

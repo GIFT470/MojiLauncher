@@ -14,6 +14,8 @@ let browseQuery = '';
 let browseTimer = null;
 let lastSearchKey = '';
 let online = true;
+let selectedReady = false;   // can the selected version launch with no wifi?
+let savedBytes = 0;          // total data saved locally for offline play
 
 const PHASE_LABEL = {
   java: 'Preparing Java',
@@ -111,7 +113,8 @@ function setStatusIdle() {
 
 function setBusy(isBusy) {
   busy = isBusy;
-  $('play').disabled = isBusy || !online;
+  $('play').disabled = isBusy || (!online && !selectedReady);
+  $('save-offline').disabled = isBusy || !online;
   updateLaunchLabel();
   $('progress-wrap').classList.toggle('hidden', !isBusy);
   $('status-pill').classList.toggle('busy', isBusy);
@@ -175,6 +178,7 @@ function selectVersion(id, preferred) {
   markSel();
   setStatusIdle();
   populateLoaderVersions(preferred);
+  refreshOfflineReady();
 }
 
 async function populateLoaderVersions(preferred) {
@@ -246,6 +250,7 @@ function switchTab(name) {
   }
   if (name === 'browse') runSearch(false);
   if (name === 'ai') setTimeout(() => $('ai-input').focus(), 60);
+  if (name === 'settings') refreshSavedStats();
 }
 
 /* ---------- Mod browser (Modrinth / CurseForge) ---------- */
@@ -559,14 +564,68 @@ setInterval(refreshOnline, 30000);
 function applyOnlineState() {
   $('net-banner').classList.toggle('hidden', online);
   document.body.classList.toggle('offline', !online);
-  $('play').disabled = busy || !online;
+  // Online: Play always allowed. Offline: only versions already saved locally.
+  $('play').disabled = busy || (!online && !selectedReady);
   updateLaunchLabel();
+  updateOfflineState();
   // Built-in offline AI works without wifi; online providers (Gemini/Grok) don't.
   const needsWifi = currentProvider() !== 'offline';
   $('ai-send').disabled = !online && needsWifi;
   $('ai-input').placeholder = (!online && needsWifi)
     ? 'No internet — the online AI needs wifi (or switch to Built-in in Settings)'
     : 'Type a question... (Enter to send, Shift+Enter for a new line)';
+  $('save-offline').disabled = busy || !online;
+}
+
+function fmtBytes(n) {
+  if (!n || n < 0) return '0 MB';
+  const u = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let i = 0, v = n;
+  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+  return `${v.toFixed(v >= 100 || i === 0 ? 0 : 1)} ${u[i]}`;
+}
+
+function updateOfflineState() {
+  const el = $('offline-state');
+  const ver = selectedVersionId || '—';
+  if (online) {
+    el.className = 'offline-state';
+    el.textContent = `Saved on this PC: ${fmtBytes(savedBytes)} · ${ver} ready to save`;
+  } else if (selectedReady) {
+    el.className = 'offline-state ready';
+    el.textContent = `${ver} is saved — you can play it offline`;
+  } else {
+    el.className = 'offline-state not-ready';
+    el.textContent = `${ver} isn't saved for offline yet — reconnect and press Save for offline`;
+  }
+}
+
+async function refreshOfflineReady() {
+  if (!selectedVersionId) { selectedReady = false; applyOnlineState(); return; }
+  try {
+    const r = await api.versionReady({
+      versionId: selectedVersionId,
+      loader: currentLoader(),
+      loaderVersion: currentLoaderVersion(),
+    });
+    selectedReady = !!(r && r.ready);
+  } catch { selectedReady = false; }
+  applyOnlineState();
+}
+
+async function refreshSavedStats() {
+  try {
+    const s = await api.cacheStats();
+    if (!s || !s.ok) return;
+    savedBytes = s.total || 0;
+    $('saved-total').textContent = fmtBytes(s.total);
+    $('saved-versions').textContent = `${s.savedVersions} version${s.savedVersions === 1 ? '' : 's'} saved · ${s.markedReady} marked offline-ready`;
+    $('saved-versions-size').textContent = fmtBytes(s.versions);
+    $('saved-libraries-size').textContent = fmtBytes(s.libraries);
+    $('saved-assets-size').textContent = fmtBytes(s.assets);
+    $('saved-instances-size').textContent = fmtBytes(s.instances);
+  } catch {}
+  updateOfflineState();
 }
 
 async function refreshOnline() {
@@ -637,6 +696,8 @@ async function init() {
 
   applyOnlineState();
   refreshOnline();
+  refreshOfflineReady();
+  refreshSavedStats();
 }
 
 $('tab-play').addEventListener('click', () => switchTab('play'));
@@ -704,11 +765,13 @@ $('loader').addEventListener('change', () => {
   api.saveSettings({ loader: currentLoader(), loaderVersion: '' });
   populateLoaderVersions();
   setStatusIdle();
+  refreshOfflineReady();
 });
 
 $('loader-version').addEventListener('change', () => {
   $('loader-version-sub').textContent = currentLoaderVersion();
   api.saveSettings({ loaderVersion: currentLoaderVersion() });
+  refreshOfflineReady();
 });
 
 $('ram').addEventListener('input', () => {
@@ -845,15 +908,16 @@ window.addEventListener('focus', () => {
 
 $('play').addEventListener('click', async () => {
   if (busy) return;
-  if (!online) {
-    log('[launcher] No internet connection — Minecraft needs wifi to download and launch.');
-    setStatus('No internet', 'Reconnect to play');
-    return;
-  }
   const username = $('username').value.trim() || 'Player';
   const versionId = selectedVersionId;
   const version = allVersions.find(v => v.id === versionId);
   if (!version) { log('[launcher] No version selected.'); return; }
+
+  if (!online && !selectedReady) {
+    log(`[launcher] No internet, and ${versionId} isn't saved for offline yet. Reconnect and press "Save for offline" first.`);
+    setStatus('No internet', `${versionId} not saved offline`);
+    return;
+  }
 
   const loader = currentLoader();
   const loaderVersion = currentLoaderVersion();
@@ -881,8 +945,52 @@ $('play').addEventListener('click', async () => {
     log(`[launcher] Launch failed: ${res.error}`);
     $('progress-text').textContent = 'Failed: ' + res.error;
     setStatus('Launch failed', res.error);
+  } else {
+    refreshOfflineReady();
+    refreshSavedStats();
   }
 });
+
+// "Save for offline": download everything the selected version needs (no launch)
+// so it can be played later without wifi.
+$('save-offline').addEventListener('click', async () => {
+  if (busy) return;
+  if (!online) { log('[launcher] Connect to wifi to save a version for offline play.'); return; }
+  const versionId = selectedVersionId;
+  const version = allVersions.find(v => v.id === versionId);
+  if (!version) { log('[launcher] No version selected.'); return; }
+  const loader = currentLoader();
+  const loaderVersion = currentLoaderVersion();
+  if (loader !== 'vanilla' && !loaderVersion) {
+    log(`[launcher] No ${loader} version available for ${versionId}.`);
+    return;
+  }
+
+  setBusy(true);
+  $('save-offline-label').textContent = 'Saving…';
+  $('progress-fill').style.width = '0%';
+  $('progress-text').textContent = 'Saving for offline...';
+  setStatus('Saving for offline', versionId);
+  log(`[launcher] Saving ${versionId}${loader === 'vanilla' ? '' : ' + ' + loader + ' ' + loaderVersion} for offline play...`);
+
+  const res = await api.prepareOffline({ versionId, versionUrl: version.url, loader, loaderVersion });
+  $('save-offline-label').textContent = 'Save for offline';
+  setBusy(false);
+  if (!res.ok) {
+    log(`[launcher] Save for offline failed: ${res.error}`);
+    $('progress-text').textContent = 'Failed: ' + res.error;
+    setStatus('Save failed', res.error);
+  } else {
+    $('progress-text').textContent = `Saved ${versionId} for offline`;
+    setStatus('Saved for offline', `${versionId} ready without wifi`);
+    log(`[launcher] ${versionId} is saved — you can now play it without wifi.`);
+    await refreshOfflineReady();
+    await refreshSavedStats();
+  }
+});
+
+$('refresh-saved').addEventListener('click', () => refreshSavedStats());
+
 
 // Progress events fire very fast during parallel downloads; coalesce to one
 // DOM write per frame instead of thrashing layout on every event.

@@ -246,6 +246,106 @@ ipcMain.handle('open-external', async (_e, url) => {
   return { ok: false };
 });
 
+// ---- Offline cache ("save for offline" so you can play without wifi) ----
+const OFFLINE_MANIFEST = () => path.join(settings.gameDir, 'moji-offline.json');
+const offlineKey = (versionId, loader, loaderVersion) =>
+  `${versionId}|${loader || 'vanilla'}|${loaderVersion || ''}`;
+
+async function readOfflineManifest() {
+  try { return JSON.parse(await fsp.readFile(OFFLINE_MANIFEST(), 'utf8')); }
+  catch { return {}; }
+}
+async function markOfflineReady(versionId, loader, loaderVersion) {
+  const m = await readOfflineManifest();
+  m[offlineKey(versionId, loader, loaderVersion)] = {
+    versionId, loader: loader || 'vanilla', loaderVersion: loaderVersion || '', savedAt: Date.now(),
+  };
+  try { await fsp.writeFile(OFFLINE_MANIFEST(), JSON.stringify(m, null, 2)); } catch {}
+}
+
+// Recursive directory size in bytes (best-effort; skips unreadable entries).
+async function dirSize(dir) {
+  let total = 0;
+  const stack = [dir];
+  while (stack.length) {
+    const d = stack.pop();
+    let entries;
+    try { entries = await fsp.readdir(d, { withFileTypes: true }); } catch { continue; }
+    for (const e of entries) {
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) stack.push(p);
+      else if (e.isFile()) { try { total += (await fsp.stat(p)).size; } catch {} }
+    }
+  }
+  return total;
+}
+
+// How much data the launcher has saved locally for offline play.
+ipcMain.handle('cache-stats', async () => {
+  const g = settings.gameDir;
+  const [assets, libraries, versions, instances] = await Promise.all([
+    dirSize(path.join(g, 'assets')),
+    dirSize(path.join(g, 'libraries')),
+    dirSize(path.join(g, 'versions')),
+    dirSize(path.join(g, 'instances')),
+  ]);
+  const total = assets + libraries + versions + instances;
+  let savedVersions = 0;
+  try {
+    const vdir = path.join(g, 'versions');
+    for (const e of await fsp.readdir(vdir, { withFileTypes: true })) {
+      if (!e.isDirectory()) continue;
+      if (fs.existsSync(path.join(vdir, e.name, `${e.name}.jar`)) &&
+          fs.existsSync(path.join(vdir, e.name, `${e.name}.json`))) savedVersions++;
+    }
+  } catch {}
+  const manifest = await readOfflineManifest();
+  return { ok: true, total, assets, libraries, versions, instances, savedVersions, markedReady: Object.keys(manifest).length, gameDir: g };
+});
+
+// Can this exact version+loader launch with no wifi? Disk-only for vanilla;
+// modded also requires a recorded save (loader files are tracked in the manifest).
+ipcMain.handle('version-ready', async (_e, { versionId, loader, loaderVersion }) => {
+  const g = settings.gameDir;
+  // Disk-only: if the version JSON isn't cached, it can't be ready offline.
+  // Guarding here keeps getVersionJson from touching the network.
+  if (!fs.existsSync(path.join(g, 'versions', versionId, `${versionId}.json`))) return { ready: false };
+  try {
+    const vj = await mc.getVersionJson(g, versionId);
+    const { ready } = await mc.checkInstalled(g, vj);
+    if (!ready) return { ready: false };
+    if (!loader || loader === 'vanilla') return { ready: true };
+    const m = await readOfflineManifest();
+    return { ready: !!m[offlineKey(versionId, loader, loaderVersion)] };
+  } catch {
+    return { ready: false };
+  }
+});
+
+// Pre-download everything a version needs (no launch) so it's playable offline.
+ipcMain.handle('prepare-offline', async (_e, { versionId, versionUrl, loader, loaderVersion }) => {
+  const gameDir = settings.gameDir;
+  try {
+    send('progress', { phase: 'version', current: 0, total: 1, file: `Loading ${versionId}...` });
+    const vjVanilla = await mc.getVersionJson(gameDir, versionId, versionUrl);
+    const java = await ensureJava(gameDir, vjVanilla, settings.javaPath, p => send('progress', p));
+    let launchId = versionId;
+    if (loader && loader !== 'vanilla') {
+      if (!loaderVersion) return { ok: false, error: 'No loader version selected.' };
+      send('progress', { phase: 'loader', current: 0, total: 1, file: `Preparing ${loader} ${loaderVersion}...` });
+      launchId = await ensureLoader(gameDir, loader, versionId, loaderVersion, java.path, line => send('game-log', line));
+      send('progress', { phase: 'loader', current: 1, total: 1, file: launchId });
+    }
+    const vj = launchId === versionId ? vjVanilla : await mc.getVersionJson(gameDir, launchId);
+    await mc.installVersion(gameDir, vj, p => send('progress', p));
+    await markOfflineReady(versionId, loader, loaderVersion);
+    send('game-log', `[launcher] Saved ${versionId} for offline play.`);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message || String(err) };
+  }
+});
+
 ipcMain.handle('launch', async (_e, { versionId, versionUrl, username, loader, loaderVersion }) => {
   if (gameProcess) return { ok: false, error: 'Game is already running.' };
   if (!/^[A-Za-z0-9_]{3,16}$/.test(username || '')) {
@@ -273,6 +373,7 @@ ipcMain.handle('launch', async (_e, { versionId, versionUrl, username, loader, l
     const vj = launchId === versionId ? vjVanilla : await mc.getVersionJson(gameDir, launchId);
 
     await mc.installVersion(gameDir, vj, p => send('progress', p));
+    await markOfflineReady(versionId, loader, loaderVersion);
 
     const instanceDir = await instanceDirFor(gameDir, launchId);
     send('game-log', `[launcher] Instance folder: ${instanceDir}\n`);
