@@ -555,6 +555,11 @@ $('ai-provider').addEventListener('change', () => {
 $('gemini-get-key').addEventListener('click', () => api.openExternal('https://aistudio.google.com/apikey'));
 $('grok-get-key').addEventListener('click', () => api.openExternal('https://console.x.ai/'));
 $('skin-select').addEventListener('change', () => api.saveSettings({ skinFile: $('skin-select').value }));
+$('add-skin').addEventListener('click', async () => {
+  const res = await api.addSkin();
+  if (res && res.ok) await refreshSkins();
+  else if (res && res.error) log(`[launcher] Could not add skin: ${res.error}`);
+});
 $('open-skins').addEventListener('click', async () => { await api.openSkinsDir(); refreshSkins(); });
 $('refresh-skins').addEventListener('click', () => refreshSkins());
 

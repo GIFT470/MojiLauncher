@@ -243,12 +243,21 @@
                 <select id="skin-select" class="settings-select">
                   <option value="">Default (Steve/Alex)</option>
                 </select>
+                <button id="add-skin" class="mini-btn" type="button">Add skin…</button>
                 <button id="open-skins" class="mini-btn" type="button">Open folder</button>
                 <button id="refresh-skins" class="mini-btn" type="button">Refresh</button>
               </div>
               <div class="note">
-                Drop <b>64&times;64 skin .png</b> files into the skins folder, press <b>Refresh</b>, then pick one. The launcher forces it on every launch by overriding the game's default player skins, so you always see it in game.
+                Easiest: click <b>Add skin…</b> and choose a <b>64&times;64 skin .png</b> — it's copied in and selected for you. Or drop files into the skins folder and press <b>Refresh</b>. The launcher forces your skin on every launch by overriding the game's default player skins, so you always see it in game.
                 <span class="note-warn">This changes what <b>you</b> see on your own player (singleplayer/LAN). On a server, other players won't see it — only a real account or a skin mod can do that.</span>
+              </div>
+            </div>
+
+            <div class="field">
+              <label>Performance</label>
+              <div class="note">
+                Every launch already uses tuned Java (Aikar's G1GC flags) for smoother frame pacing and fewer stutters, plus IPv4 networking. Give the game more memory with the slider on the Play tab.
+                <span class="note-warn">Honest note: a launcher can't create FPS or lower ping on its own. For a real FPS boost install <b>Sodium</b> (Fabric) or <b>Embeddium</b> (Forge) from the Browse tab and lower render distance in game. Ping depends on your internet and the server, not the launcher.</span>
               </div>
             </div>
 

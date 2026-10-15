@@ -433,20 +433,39 @@ function buildLaunchArgs(gameDir, vj, opts) {
 
   const features = { is_demo_mode: false, has_custom_resolution: Boolean(width && height) };
 
-  // GC-tuned flags for smoother frame pacing. UnlockExperimentalVMOptions
-  // must precede the experimental G1 flags or the JVM refuses to start.
+  // Full Aikar's G1GC flag set (mcflags.emc.gs) — the standard Minecraft
+  // performance tuning: smoother frame pacing, fewer/shorter GC stalls, and
+  // heap pre-touched up front so the JVM doesn't page-fault mid-game.
+  // UnlockExperimentalVMOptions must precede the experimental G1 flags or the
+  // JVM refuses to start. Region/young sizing scales with heap (Java 8 safe).
+  const bigHeap = ramMb >= 12288;
   const jvmArgs = [
-    `-Xmx${ramMb}M`, `-Xms${Math.min(ramMb, 2048)}M`,
+    `-Xmx${ramMb}M`, `-Xms${ramMb}M`,
     '-XX:+UseG1GC',
-    '-XX:+UnlockExperimentalVMOptions',
-    '-XX:G1NewSizePercent=20',
-    '-XX:G1ReservePercent=20',
-    '-XX:MaxGCPauseMillis=50',
-    '-XX:G1HeapRegionSize=32M',
     '-XX:+ParallelRefProcEnabled',
+    '-XX:MaxGCPauseMillis=200',
+    '-XX:+UnlockExperimentalVMOptions',
     '-XX:+DisableExplicitGC',
+    '-XX:+AlwaysPreTouch',
+    `-XX:G1NewSizePercent=${bigHeap ? 40 : 30}`,
+    `-XX:G1MaxNewSizePercent=${bigHeap ? 50 : 40}`,
+    `-XX:G1HeapRegionSize=${bigHeap ? 16 : 8}M`,
+    '-XX:G1ReservePercent=20',
+    '-XX:G1HeapWastePercent=5',
+    '-XX:G1MixedGCCountTarget=4',
+    '-XX:InitiatingHeapOccupancyPercent=15',
+    '-XX:G1MixedGCLiveThresholdPercent=90',
+    '-XX:G1RSetUpdatingPauseTimePercent=5',
+    '-XX:SurvivorRatio=32',
+    '-XX:+PerfDisableSharedMem',
+    '-XX:MaxTenuringThreshold=1',
+    '-Dusing.aikars.flags=https://mcflags.emc.gs',
+    '-Daikars.new.flags=true',
+    // IPv4 stack avoids some DNS/route stalls; perf data file disabled so the
+    // JVM doesn't write hsperfdata to temp (also kinder on a full system drive).
     '-Djava.net.preferIPv4Stack=true',
   ];
+
 
   if (vj.arguments?.jvm) {
     jvmArgs.push(...expandArgs(vj.arguments.jvm, vars, features));

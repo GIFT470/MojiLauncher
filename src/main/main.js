@@ -192,6 +192,28 @@ ipcMain.handle('open-skins-dir', async () => {
   return dir;
 });
 
+// Let the user pick a skin PNG from anywhere and copy it into the skins folder.
+ipcMain.handle('add-skin', async () => {
+  const res = await dialog.showOpenDialog(win, {
+    title: 'Choose a skin (64x64 PNG)',
+    buttonLabel: 'Add skin',
+    filters: [{ name: 'Minecraft skin (PNG)', extensions: ['png'] }],
+    properties: ['openFile'],
+  });
+  if (res.canceled || !res.filePaths || !res.filePaths.length) return { ok: false, canceled: true };
+  try {
+    const dir = await skin.ensureSkinsDir(settings.gameDir);
+    let name = path.basename(res.filePaths[0]);
+    if (!name.toLowerCase().endsWith('.png')) name += '.png';
+    await fsp.copyFile(res.filePaths[0], path.join(dir, name));
+    settings.skinFile = name;
+    await saveSettings();
+    return { ok: true, name, skins: await skin.listSkins(settings.gameDir) };
+  } catch (err) {
+    return { ok: false, error: err.message || String(err) };
+  }
+});
+
 ipcMain.handle('mod-search', async (_e, opts) => {
   try {
     return await mods.search({ ...opts, apiKey: settings.curseforgeKey });
