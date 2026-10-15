@@ -8,6 +8,7 @@ const { ensureJava, findInstalledJavas } = require('./java');
 const { getLoaderVersions, ensureLoader, resolveInstanceId } = require('./loaders');
 const mods = require('./mods');
 const ai = require('./ai');
+const skin = require('./skin');
 
 const SETTINGS_FILE = () => path.join(app.getPath('userData'), 'settings.json');
 
@@ -27,6 +28,7 @@ const DEFAULT_SETTINGS = {
   grokKey: '',
   grokModel: '',
   aiProvider: 'gemini',
+  skinFile: '',
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -172,6 +174,20 @@ async function instanceDirFor(gameDir, launchId) {
 ipcMain.handle('open-instance-dir', async (_e, { versionId, loader, loaderVersion }) => {
   const launchId = await resolveInstanceId(settings.gameDir, loader, versionId, loaderVersion);
   const dir = await instanceDirFor(settings.gameDir, launchId);
+  shell.openPath(dir);
+  return dir;
+});
+
+ipcMain.handle('list-skins', async () => {
+  try {
+    return { ok: true, skins: await skin.listSkins(settings.gameDir), selected: settings.skinFile || '' };
+  } catch (err) {
+    return { ok: false, error: err.message, skins: [] };
+  }
+});
+
+ipcMain.handle('open-skins-dir', async () => {
+  const dir = await skin.ensureSkinsDir(settings.gameDir);
   shell.openPath(dir);
   return dir;
 });
@@ -377,6 +393,10 @@ ipcMain.handle('launch', async (_e, { versionId, versionUrl, username, loader, l
 
     const instanceDir = await instanceDirFor(gameDir, launchId);
     send('game-log', `[launcher] Instance folder: ${instanceDir}\n`);
+
+    const skinRes = await skin.applySkinPack(gameDir, instanceDir, settings.skinFile);
+    if (skinRes.applied) send('game-log', `[launcher] Skin applied: ${settings.skinFile}`);
+    else if (skinRes.reason) send('game-log', `[launcher] Skin not applied (${skinRes.reason})`);
 
     // Modern version jsons put natives jars directly on the classpath and point
     // -Djava.library.path/-Djna.tmpdir/lwjgl SharedLibraryExtractPath at this

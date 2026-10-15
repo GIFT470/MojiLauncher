@@ -250,7 +250,7 @@ function switchTab(name) {
   }
   if (name === 'browse') runSearch(false);
   if (name === 'ai') setTimeout(() => $('ai-input').focus(), 60);
-  if (name === 'settings') refreshSavedStats();
+  if (name === 'settings') { refreshSavedStats(); refreshSkins(); }
 }
 
 /* ---------- Mod browser (Modrinth / CurseForge) ---------- */
@@ -554,6 +554,9 @@ $('ai-provider').addEventListener('change', () => {
 });
 $('gemini-get-key').addEventListener('click', () => api.openExternal('https://aistudio.google.com/apikey'));
 $('grok-get-key').addEventListener('click', () => api.openExternal('https://console.x.ai/'));
+$('skin-select').addEventListener('change', () => api.saveSettings({ skinFile: $('skin-select').value }));
+$('open-skins').addEventListener('click', async () => { await api.openSkinsDir(); refreshSkins(); });
+$('refresh-skins').addEventListener('click', () => refreshSkins());
 
 window.addEventListener('online', refreshOnline);
 window.addEventListener('offline', () => { online = false; applyOnlineState(); });
@@ -628,6 +631,29 @@ async function refreshSavedStats() {
   updateOfflineState();
 }
 
+async function refreshSkins() {
+  const sel = $('skin-select');
+  if (!sel) return;
+  let res;
+  try { res = await api.listSkins(); } catch { return; }
+  const skins = (res && res.skins) || [];
+  const current = (res && res.selected) || '';
+  sel.innerHTML = '';
+  const def = document.createElement('option');
+  def.value = '';
+  def.textContent = 'Default (Steve/Alex)';
+  sel.appendChild(def);
+  for (const name of skins) {
+    const o = document.createElement('option');
+    o.value = name;
+    o.textContent = name.replace(/\.png$/i, '');
+    sel.appendChild(o);
+  }
+  const keep = skins.includes(current) ? current : '';
+  sel.value = keep;
+  if (keep !== current) api.saveSettings({ skinFile: keep });
+}
+
 async function refreshOnline() {
   let next;
   try {
@@ -698,6 +724,7 @@ async function init() {
   refreshOnline();
   refreshOfflineReady();
   refreshSavedStats();
+  refreshSkins();
 }
 
 $('tab-play').addEventListener('click', () => switchTab('play'));

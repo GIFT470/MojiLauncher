@@ -238,6 +238,21 @@
             </div>
 
             <div class="field">
+              <label for="skin-select">Skin</label>
+              <div class="row">
+                <select id="skin-select" class="settings-select">
+                  <option value="">Default (Steve/Alex)</option>
+                </select>
+                <button id="open-skins" class="mini-btn" type="button">Open folder</button>
+                <button id="refresh-skins" class="mini-btn" type="button">Refresh</button>
+              </div>
+              <div class="note">
+                Drop <b>64&times;64 skin .png</b> files into the skins folder, press <b>Refresh</b>, then pick one. The launcher forces it on every launch by overriding the game's default player skins, so you always see it in game.
+                <span class="note-warn">This changes what <b>you</b> see on your own player (singleplayer/LAN). On a server, other players won't see it — only a real account or a skin mod can do that.</span>
+              </div>
+            </div>
+
+            <div class="field">
               <label for="javapath">Java path (leave empty for auto)</label>
               <input id="javapath" type="text" placeholder="Auto-detect / auto-download" spellcheck="false" />
               <div class="note">The launcher picks the lowest installed Java that fits the game, or downloads one automatically.</div>

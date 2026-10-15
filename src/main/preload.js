@@ -7,6 +7,8 @@ contextBridge.exposeInMainWorld('launcher', {
   getVersions: () => ipcRenderer.invoke('get-versions'),
   getLoaderVersions: opts => ipcRenderer.invoke('get-loader-versions', opts),
   openInstanceDir: opts => ipcRenderer.invoke('open-instance-dir', opts),
+  listSkins: () => ipcRenderer.invoke('list-skins'),
+  openSkinsDir: () => ipcRenderer.invoke('open-skins-dir'),
   getJavas: () => ipcRenderer.invoke('get-javas'),
   modSearch: opts => ipcRenderer.invoke('mod-search', opts),
   modFiles: opts => ipcRenderer.invoke('mod-files', opts),

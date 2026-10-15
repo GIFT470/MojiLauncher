@@ -593,6 +593,8 @@ input[type="text"]:focus, input[type="number"]:focus {
 
 .note { color: var(--muted); font-size: 12px; line-height: 1.5; user-select: text; }
 .note.error { color: var(--danger); }
+.note-warn { display: block; margin-top: 4px; color: var(--danger); opacity: 0.85; }
+#skin-select { flex: 1; min-width: 0; }
 
 .hidden { display: none !important; }
 
