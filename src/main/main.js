@@ -384,6 +384,40 @@ ipcMain.handle('prepare-offline', async (_e, { versionId, versionUrl, loader, lo
   }
 });
 
+// CustomSkinLoader (xfl03) on Modrinth. It applies a local skin ONLY to the
+// matching username, which is what makes "only I see my skin in multiplayer"
+// possible (a resource pack can't target one player). Only used on modded
+// instances; vanilla falls back to the shared resource-pack override.
+const CSL_MODRINTH_ID = 'idMHQ4n2';
+
+async function cslJarPresent(instanceDir) {
+  try {
+    const files = await fsp.readdir(path.join(instanceDir, 'mods'));
+    return files.some(f => /customskinloader.*\.jar$/i.test(f));
+  } catch {
+    return false;
+  }
+}
+
+async function ensureCslJar(gameDir, instanceDir, versionId, loader) {
+  if (await cslJarPresent(instanceDir)) return true;
+  try {
+    const files = await mods.files({ source: 'modrinth', projectId: CSL_MODRINTH_ID, gameVersion: versionId, loader, type: 'mod' });
+    const pick = Array.isArray(files) && files[0];
+    if (!pick || !pick.fileUrl) {
+      send('game-log', `[launcher] CustomSkinLoader has no ${versionId}/${loader} build; using shared skin pack instead.`);
+      return false;
+    }
+    send('game-log', `[launcher] Installing CustomSkinLoader (${versionId}/${loader}) so only you see your skin...`);
+    const dest = path.join(instanceDir, 'mods', pick.filename);
+    await mc.downloadFile(pick.fileUrl, dest);
+    return fs.existsSync(dest);
+  } catch (err) {
+    send('game-log', `[launcher] CustomSkinLoader install failed (${err.message || err}); using shared skin pack instead.`);
+    return false;
+  }
+}
+
 ipcMain.handle('launch', async (_e, { versionId, versionUrl, username, loader, loaderVersion }) => {
   if (gameProcess) return { ok: false, error: 'Game is already running.' };
   if (!/^[A-Za-z0-9_]{3,16}$/.test(username || '')) {
@@ -416,9 +450,29 @@ ipcMain.handle('launch', async (_e, { versionId, versionUrl, username, loader, l
     const instanceDir = await instanceDirFor(gameDir, launchId);
     send('game-log', `[launcher] Instance folder: ${instanceDir}\n`);
 
-    const skinRes = await skin.applySkinPack(gameDir, instanceDir, settings.skinFile);
-    if (skinRes.applied) send('game-log', `[launcher] Skin applied: ${settings.skinFile}`);
-    else if (skinRes.reason) send('game-log', `[launcher] Skin not applied (${skinRes.reason})`);
+    // Two skin routes:
+    //  - modded + skin selected -> CustomSkinLoader per-user skin (only YOU see
+    //    it; other players keep normal skins), and no shared resource-pack override.
+    //  - vanilla (or CSL unavailable) -> shared resource-pack override, which on
+    //    an offline server also changes other default-skin players (vanilla limit).
+    const modded = loader && loader !== 'vanilla';
+    if (modded && settings.skinFile) {
+      const srcAbs = path.join(skin.skinsDir(gameDir), settings.skinFile);
+      if (fs.existsSync(srcAbs) && await ensureCslJar(gameDir, instanceDir, versionId, loader)) {
+        await skin.applyPerUserSkin(instanceDir, username, srcAbs);
+        await skin.applySkinPack(gameDir, instanceDir, ''); // drop any old shared pack
+        send('game-log', `[launcher] Skin applied via CustomSkinLoader — only you see it: ${settings.skinFile}`);
+      } else {
+        const skinRes = await skin.applySkinPack(gameDir, instanceDir, settings.skinFile);
+        if (skinRes.applied) send('game-log', `[launcher] Skin applied: ${settings.skinFile}`);
+        else if (skinRes.reason) send('game-log', `[launcher] Skin not applied (${skinRes.reason})`);
+      }
+    } else {
+      await skin.applyPerUserSkin(instanceDir, username, null); // clear per-user skin
+      const skinRes = await skin.applySkinPack(gameDir, instanceDir, settings.skinFile);
+      if (skinRes.applied) send('game-log', `[launcher] Skin applied: ${settings.skinFile}`);
+      else if (skinRes.reason) send('game-log', `[launcher] Skin not applied (${skinRes.reason})`);
+    }
 
     // Modern version jsons put natives jars directly on the classpath and point
     // -Djava.library.path/-Djna.tmpdir/lwjgl SharedLibraryExtractPath at this

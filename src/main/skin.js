@@ -20,6 +20,25 @@ const TEXTURE_TARGETS = [...LEGACY_TARGETS, ...MODERN_TARGETS];
 const PACK_NAME = 'MojiSkin';
 const PACK_ID = `file/${PACK_NAME}`;
 
+// Per-player route (multiplayer "only I see it"): CustomSkinLoader reads
+// <gameDir>/CustomSkinLoader/LocalSkin/skins/<USERNAME>.png and applies it ONLY
+// to that username; every other player falls back to their normal skin. Our
+// gameDir is the per-instance folder, so the file lands inside the instance.
+function perUserSkinPath(instanceDir, username) {
+  return path.join(instanceDir, 'CustomSkinLoader', 'LocalSkin', 'skins', `${username}.png`);
+}
+
+async function applyPerUserSkin(instanceDir, username, srcAbs) {
+  const dest = perUserSkinPath(instanceDir, username);
+  if (!srcAbs) {
+    await fsp.rm(dest, { force: true });
+    return { applied: false };
+  }
+  await fsp.mkdir(path.dirname(dest), { recursive: true });
+  await fsp.copyFile(srcAbs, dest);
+  return { applied: true };
+}
+
 function skinsDir(gameDir) {
   return path.join(gameDir, 'skins');
 }
@@ -122,4 +141,4 @@ async function applySkinPack(gameDir, instanceDir, skinFile) {
   }
 }
 
-module.exports = { skinsDir, ensureSkinsDir, listSkins, applySkinPack, TEXTURE_TARGETS, PACK_ID };
+module.exports = { skinsDir, ensureSkinsDir, listSkins, applySkinPack, applyPerUserSkin, perUserSkinPath, TEXTURE_TARGETS, PACK_ID };
