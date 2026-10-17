@@ -24,6 +24,7 @@ const PHASE_LABEL = {
   libraries: 'Downloading files',
   assets: 'Downloading assets',
   natives: 'Extracting natives',
+  perf: 'Applying performance mode',
   launch: 'Launching',
 };
 
@@ -555,6 +556,7 @@ $('ai-provider').addEventListener('change', () => {
 $('gemini-get-key').addEventListener('click', () => api.openExternal('https://aistudio.google.com/apikey'));
 $('grok-get-key').addEventListener('click', () => api.openExternal('https://console.x.ai/'));
 $('skin-select').addEventListener('change', () => api.saveSettings({ skinFile: $('skin-select').value }));
+$('perf-mode').addEventListener('change', () => api.saveSettings({ perfMode: $('perf-mode').value === 'on' }));
 $('add-skin').addEventListener('click', async () => {
   const res = await api.addSkin();
   if (res && res.ok) await refreshSkins();
@@ -698,6 +700,7 @@ async function init() {
   $('grok-key').value = grokKey;
   $('grok-model').value = s.grokModel || '';
   $('ai-provider').value = ['grok', 'gemini', 'offline'].includes(s.aiProvider) ? s.aiProvider : 'gemini';
+  $('perf-mode').value = s.perfMode === false ? 'off' : 'on';
   updateAiBadge();
   if (s.loader) $('loader').value = s.loader;
   updateAvatars();
@@ -836,6 +839,7 @@ $('save-settings').addEventListener('click', async () => {
     grokKey: $('grok-key').value.trim(),
     grokModel: $('grok-model').value.trim(),
     aiProvider: currentProvider(),
+    perfMode: $('perf-mode').value === 'on',
   });
   cfKey = $('curseforge-key').value.trim();
   geminiKey = $('gemini-key').value.trim();

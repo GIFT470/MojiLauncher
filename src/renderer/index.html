@@ -255,10 +255,14 @@
             </div>
 
             <div class="field">
-              <label>Performance</label>
+              <label for="perf-mode">Performance mode</label>
+              <select id="perf-mode" class="settings-select">
+                <option value="on">On — auto-tune every launch</option>
+                <option value="off">Off — keep my own settings</option>
+              </select>
               <div class="note">
-                Every launch already uses tuned Java (Aikar's G1GC flags) for smoother frame pacing and fewer stutters, plus IPv4 networking. Give the game more memory with the slider on the Play tab.
-                <span class="note-warn">Honest note: a launcher can't create FPS or lower ping on its own. For a real FPS boost install <b>Sodium</b> (Fabric) or <b>Embeddium</b> (Forge) from the Browse tab and lower render distance in game. Ping depends on your internet and the server, not the launcher.</span>
+                Every launch with this on applies high-FPS video settings to this instance (fast graphics, clouds and entity shadows off, smooth lighting off, minimal particles, biome blend off, vsync off, 260 FPS cap). On <b>Fabric / Quilt / Forge</b> it also auto-installs <b>Sodium, Lithium, Krypton</b> and <b>FerriteCore</b> (Forge gets <b>Embeddium + FerriteCore</b>) — the mods that actually raise FPS and cut network overhead. Aikar's G1GC Java flags and IPv4 are always on.
+                <span class="note-warn">Honest note: a launcher can't create FPS or lower ping by itself. The auto mods/settings are the real FPS win; ping still depends on your ISP and the server's distance. Render distance is left to you — it's the biggest FPS lever. Turning this off stops auto-tuning, but mods it already added stay in the instance folder.</span>
               </div>
             </div>
 

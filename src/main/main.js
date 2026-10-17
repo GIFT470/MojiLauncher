@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, net } = require('electron');
 const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
@@ -9,6 +9,7 @@ const { getLoaderVersions, ensureLoader, resolveInstanceId } = require('./loader
 const mods = require('./mods');
 const ai = require('./ai');
 const skin = require('./skin');
+const perf = require('./perf');
 
 const SETTINGS_FILE = () => path.join(app.getPath('userData'), 'settings.json');
 
@@ -29,6 +30,7 @@ const DEFAULT_SETTINGS = {
   grokModel: '',
   aiProvider: 'gemini',
   skinFile: '',
+  perfMode: true,
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -376,6 +378,16 @@ ipcMain.handle('prepare-offline', async (_e, { versionId, versionUrl, loader, lo
     }
     const vj = launchId === versionId ? vjVanilla : await mc.getVersionJson(gameDir, launchId);
     await mc.installVersion(gameDir, vj, p => send('progress', p));
+    if (settings.perfMode !== false) {
+      const instanceDir = await instanceDirFor(gameDir, launchId);
+      await perf.applyGameSettings(instanceDir, versionId);
+      if (loader && loader !== 'vanilla') {
+        send('progress', { phase: 'perf', current: 0, total: 1, file: 'Saving performance mods...' });
+        const added = await ensurePerfMods(instanceDir, versionId, loader);
+        send('progress', { phase: 'perf', current: 1, total: 1, file: 'Performance mods saved' });
+        if (added) send('game-log', `[launcher] Performance mode: saved ${added} mod(s) for offline play.`);
+      }
+    }
     await markOfflineReady(versionId, loader, loaderVersion);
     send('game-log', `[launcher] Saved ${versionId} for offline play.`);
     return { ok: true };
@@ -416,6 +428,42 @@ async function ensureCslJar(gameDir, instanceDir, versionId, loader) {
     send('game-log', `[launcher] CustomSkinLoader install failed (${err.message || err}); using shared skin pack instead.`);
     return false;
   }
+}
+
+// Performance mode: install the curated FPS mods for this version/loader once
+// per instance. Quilt runs Fabric mods, so it queries Fabric builds. Already
+// installed mods are detected by filename and skipped, so repeat launches (and
+// offline launches) never re-download or depend on the network.
+async function ensurePerfMods(instanceDir, versionId, loader) {
+  const slugs = perf.PERF_MODS[loader] || [];
+  if (!slugs.length) return 0;
+  if (await perf.hasOptiFine(instanceDir)) {
+    send('game-log', '[launcher] OptiFine found — skipping auto performance mods to avoid conflicts.');
+    return 0;
+  }
+  if (!net.isOnline()) {
+    send('game-log', '[launcher] Offline — skipping performance mod downloads (installed mods still load).');
+    return 0;
+  }
+  const queryLoader = loader === 'quilt' ? 'fabric' : loader;
+  let installed = 0;
+  for (const slug of slugs) {
+    if (await perf.hasPerfMod(instanceDir, slug)) continue;
+    try {
+      const files = await mods.files({ source: 'modrinth', projectId: slug, gameVersion: versionId, loader: queryLoader, type: 'mod' });
+      const pick = Array.isArray(files) && files[0];
+      if (!pick || !pick.fileUrl) {
+        send('game-log', `[launcher] ${slug}: no ${versionId}/${queryLoader} build — skipped.`);
+        continue;
+      }
+      await mc.downloadFile(pick.fileUrl, path.join(instanceDir, 'mods', pick.filename));
+      installed++;
+      send('game-log', `[launcher] Performance mod: ${pick.filename}`);
+    } catch (err) {
+      send('game-log', `[launcher] Performance mod ${slug} skipped (${err.message || err}).`);
+    }
+  }
+  return installed;
 }
 
 ipcMain.handle('launch', async (_e, { versionId, versionUrl, username, loader, loaderVersion }) => {
@@ -472,6 +520,25 @@ ipcMain.handle('launch', async (_e, { versionId, versionUrl, username, loader, l
       const skinRes = await skin.applySkinPack(gameDir, instanceDir, settings.skinFile);
       if (skinRes.applied) send('game-log', `[launcher] Skin applied: ${settings.skinFile}`);
       else if (skinRes.reason) send('game-log', `[launcher] Skin not applied (${skinRes.reason})`);
+    }
+
+    // Performance mode runs on every launch: force FPS-friendly video settings
+    // and, on modded instances, make sure the curated optimization mods exist.
+    // Vanilla can't load mods, so it only gets the settings.
+    if (settings.perfMode !== false) {
+      send('progress', { phase: 'perf', current: 0, total: 1, file: 'Applying performance mode...' });
+      const applied = await perf.applyGameSettings(instanceDir, versionId);
+      if (applied.applied) send('game-log', '[launcher] Performance mode: high-FPS video settings applied.');
+      else send('game-log', `[launcher] Performance mode: could not write options.txt (${applied.reason}).`);
+      if (modded) {
+        const added = await ensurePerfMods(instanceDir, versionId, loader);
+        if (added) send('game-log', `[launcher] Performance mode: installed ${added} performance mod${added === 1 ? '' : 's'}.`);
+      } else {
+        send('game-log', "[launcher] Performance mode: vanilla can't load mods — settings applied. Pick Fabric for Sodium/Lithium.");
+      }
+      send('progress', { phase: 'perf', current: 1, total: 1, file: 'Performance mode ready' });
+    } else {
+      send('game-log', '[launcher] Performance mode is off — leaving your video settings and mods alone.');
     }
 
     // Modern version jsons put natives jars directly on the classpath and point
